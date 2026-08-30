@@ -28,11 +28,13 @@ from src.models import (
 )
 from src.pdf_5_porques import gerar_pdf_5_porques
 from src.tema import aplicar_tema
+from src.sidebar import mostrar_usuario_logado
 
 st.set_page_config(page_title="5 Porquês", page_icon="🔍", layout="wide")
 
 usuario = exigir_login()
 aplicar_tema()
+mostrar_usuario_logado(usuario)
 st.title("🔍 Formulário 5 Porquês — Parada de Linha")
 st.caption("Preencher para paradas entre 30 minutos e 1h30min.")
 

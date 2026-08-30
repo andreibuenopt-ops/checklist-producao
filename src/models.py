@@ -267,6 +267,23 @@ def salvar_resposta(checklist_id: str, item_id: str, horario_id: str, resposta: 
     }, on_conflict="checklist_id,item_id,horario_id").execute()
 
 
+def salvar_respostas_em_lote(respostas: list[dict]) -> int:
+    """Grava várias respostas numa ÚNICA chamada ao Supabase (1 upsert com
+    N linhas), em vez de 1 chamada por clique. Usada pelo botão 'Atualizar'
+    do preenchimento — evita travar a tela a cada resposta marcada.
+
+    respostas: lista de dicts com checklist_id, item_id, horario_id,
+    resposta, respondido_por. Retorna quantas linhas foram gravadas.
+    """
+    if not respostas:
+        return 0
+    payload = [{**r, "respondido_em": "now()"} for r in respostas]
+    supabase.table("checklist_respostas").upsert(
+        payload, on_conflict="checklist_id,item_id,horario_id"
+    ).execute()
+    return len(payload)
+
+
 # =====================================================================
 # Dashboard
 # =====================================================================

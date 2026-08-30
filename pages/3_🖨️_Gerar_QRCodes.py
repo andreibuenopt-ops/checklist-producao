@@ -8,11 +8,13 @@ from src.db import app_base_url
 from src.models import listar_templates, obter_logo_bytes_com_fallback
 from src.qrcode_gen import gerar_cartaz_pdf, gerar_etiqueta_png, url_do_checklist, validar_url_base
 from src.tema import aplicar_tema
+from src.sidebar import mostrar_usuario_logado
 
 st.set_page_config(page_title="Gerar QR Codes", page_icon="🖨️", layout="centered")
 
 usuario = exigir_login()
 aplicar_tema()
+mostrar_usuario_logado(usuario)
 
 if not usuario.pode_gerar_qrcodes:
     st.warning("Seu nível de acesso não permite gerar QR Codes.")

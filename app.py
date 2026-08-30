@@ -2,7 +2,7 @@
 import streamlit as st
 
 from src.auth import exigir_login, logout, trocar_senha
-from src.models import obter_logo_url_com_fallback
+from src.sidebar import mostrar_usuario_logado
 from src.tema import aplicar_tema
 
 st.set_page_config(
@@ -39,15 +39,7 @@ if usuario.senha_temporaria:
 if st.query_params.get("area"):
     st.switch_page("pages/1_📋_Preencher_Checklist.py")
 
-with st.sidebar:
-    logo = obter_logo_url_com_fallback()
-    if logo:
-        st.image(logo, use_container_width=True)
-    st.markdown(f"**{usuario.nome}**")
-    st.caption(f"Matrícula {usuario.matricula} · {usuario.papel.capitalize()}")
-    if st.button("Sair", use_container_width=True):
-        logout()
-        st.rerun()
+mostrar_usuario_logado(usuario)
 
 st.title("✅ Checklist Diário Rotineiro")
 st.markdown(

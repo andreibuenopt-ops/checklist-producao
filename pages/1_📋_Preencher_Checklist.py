@@ -1,4 +1,5 @@
 """Formulário do operador — preenche o checklist do turno atual."""
+from collections import Counter
 from itertools import groupby
 
 import streamlit as st
@@ -15,16 +16,19 @@ from src.models import (
     listar_templates,
     nomes_usuarios,
     obter_ou_criar_checklist,
-    salvar_resposta,
+    salvar_respostas_em_lote,
 )
 from src.turnos import turno_e_data_referencia
 from src.tema import aplicar_tema
+from src.sidebar import mostrar_usuario_logado
 
 st.set_page_config(page_title="Preencher Checklist", page_icon="📋", layout="centered")
 
 usuario = exigir_login()
 aplicar_tema()
+mostrar_usuario_logado(usuario)
 st.title("📋 Preencher Checklist")
+st.caption(f"Preenchendo como **{usuario.nome}** · {usuario.papel.capitalize()}")
 
 # ---------------------------------------------------------------------
 # 1) Escolher a área (via QR Code ?area=slug, ou manualmente por setor)
@@ -75,12 +79,15 @@ st.divider()
 
 # ---------------------------------------------------------------------
 # 2) Perguntas x horário de checagem do turno
+# Preenche tudo localmente primeiro — nada é gravado no banco a cada
+# clique (isso que travava a tela). Só grava quando aperta "Atualizar".
 # ---------------------------------------------------------------------
 ICONE_CRITICIDADE = {"critica": "🔴", "alta": "🟠", "media": "⚪"}
 ICONES_RESPOSTA = {"Sim": "✅ Sim", "Não": "❌ Não", "N/A": "➖ N/A"}
 OPCOES = ["Sim", "Não", "N/A"]
 tem_nao = False
 faltando = 0
+mudancas = []  # só o que difere do que já está salvo, pra gravar em lote
 
 for horario in horarios:
     st.subheader(f"🕒 Ronda das {horario['horario'][:5]}")
@@ -98,15 +105,41 @@ for horario in horarios:
             key=chave,
             label_visibility="collapsed",
         )
+
         if resposta and resposta != valor_atual:
-            salvar_resposta(checklist["id"], item["id"], horario["id"], resposta, usuario.id)
-            respostas_salvas[(item["id"], horario["id"])] = resposta
+            mudancas.append({
+                "checklist_id": checklist["id"], "item_id": item["id"],
+                "horario_id": horario["id"], "resposta": resposta,
+                "respondido_por": usuario.id,
+            })
 
         if resposta == "Não":
             tem_nao = True
         if not resposta:
             faltando += 1
     st.markdown("---")
+
+col_atualizar, col_status = st.columns([1, 3])
+if col_atualizar.button("💾 Atualizar respostas", type="primary", use_container_width=True):
+    qtd_salva = salvar_respostas_em_lote(mudancas)
+    for m in mudancas:
+        respostas_salvas[(m["item_id"], m["horario_id"])] = m["resposta"]
+
+    if qtd_salva == 0:
+        st.info("Nenhuma alteração nova para salvar.")
+    else:
+        contagem = Counter(m["resposta"] for m in mudancas)
+        resumo = f"{qtd_salva} resposta(s) salva(s): "
+        resumo += ", ".join(f"{v} {k}" for k, v in contagem.items())
+        st.success(resumo)
+        if contagem.get("Não"):
+            st.warning(
+                f"⚠️ {contagem['Não']} item(ns) marcado(s) como **Não** (não conforme) — "
+                "detalhe a situação no campo de Comentários abaixo antes de concluir."
+            )
+
+with col_status:
+    st.caption(f"{faltando} pergunta(s) ainda sem resposta." if faltando else "Todas as perguntas respondidas. ✅")
 
 # ---------------------------------------------------------------------
 # 3) Comentários do turno (obrigatório se alguma resposta = Não)
@@ -118,13 +151,16 @@ comentario = st.text_area(
     help="Explique a situação: se foi resolvido, como foi resolvido, ou se ficará pendente.",
 )
 
-st.caption(f"{faltando} pergunta(s) ainda sem resposta." if faltando else "Todas as perguntas respondidas. ✅")
-
 # ---------------------------------------------------------------------
 # 4) Assinatura (supervisor, coordenação ou master) e conclusão
 # ---------------------------------------------------------------------
 st.divider()
 st.subheader("✍️ Assinatura de conclusão")
+st.warning(
+    "⚠️ **Depois de concluído e assinado, este checklist não pode mais ser editado.** "
+    "Confira todas as respostas com atenção antes de assinar — a dupla checagem "
+    "da informação é importante."
+)
 st.caption("O checklist só é considerado concluído após a confirmação de um supervisor, coordenador ou master.")
 
 with st.form("form_concluir"):
@@ -133,6 +169,11 @@ with st.form("form_concluir"):
     concluir = st.form_submit_button("Concluir checklist", type="primary", use_container_width=True)
 
 if concluir:
+    # Salva qualquer alteração pendente antes de validar — evita perder
+    # resposta por esquecer de apertar "Atualizar" antes de concluir.
+    if mudancas:
+        salvar_respostas_em_lote(mudancas)
+
     if faltando:
         st.error(f"Ainda faltam {faltando} pergunta(s) sem resposta.")
     elif tem_nao and not comentario.strip():

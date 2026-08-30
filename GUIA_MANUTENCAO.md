@@ -70,10 +70,21 @@ tudo num lugar só quando precisar corrigir algo.
    manual (Setor → Checklist).
 2. Chama `obter_ou_criar_checklist()` — se já existe um registro pra esse
    template + turno + data de hoje, reaproveita; senão cria um novo.
-3. Cada pergunta usa `st.segmented_control` (os chips ✅❌➖) — ao clicar,
-   `salvar_resposta()` grava na hora, sem precisar de botão "salvar".
-4. No fim, pede login de um supervisor/coordenação/master pra "assinar"
-   (`concluir_checklist()`) — é o que trava o checklist como completo.
+3. Cada pergunta usa `st.segmented_control` (os chips ✅❌➖) — **nada é
+   gravado no banco a cada clique**, fica só na tela (session_state do
+   Streamlit). Isso é proposital: gravar a cada resposta deixava a tela
+   lenta/travando a cada clique, por causa da ida e volta ao Supabase.
+4. O botão **💾 Atualizar respostas** grava tudo de uma vez, numa única
+   chamada (`salvar_respostas_em_lote()` — um `upsert` com várias linhas,
+   em vez de N chamadas separadas). Mostra um resumo do que foi salvo e
+   avisa quantos itens ficaram como "Não".
+5. Se o operador esquecer de clicar "Atualizar" e for direto pra
+   "Concluir checklist", o próprio botão de concluir salva qualquer
+   pendência antes de validar — não perde resposta por esquecimento.
+6. No fim, pede login de um supervisor/coordenação/master pra "assinar"
+   (`concluir_checklist()`) — é o que trava o checklist como completo e
+   **impede qualquer edição depois** (a página já checa
+   `status == "completo"` e bloqueia com `st.stop()` lá em cima).
 
 ### 2.4 Dashboard (`pages/2_📊_...py`)
 
@@ -146,6 +157,7 @@ entre 30min e 1h30min — `JANELA_MINUTOS_MIN`/`JANELA_MINUTOS_MAX` em
 | Login falha sem mensagem clara | Secrets do Streamlit Cloud desalinhados com o projeto Supabase certo | Manage app → Settings → Secrets: confere se `SUPABASE_URL`/`SUPABASE_KEY` batem com o projeto que você rodou o `schema.sql` |
 | Checklist não aparece na lista pra preencher | Template está com `ativo = false` | Administração → Checklists Cadastrados → botão "Reativar checklist" |
 | Erro genérico e a mensagem vem "redacted to prevent data leaks" | Streamlit Cloud esconde detalhes do erro por padrão | Manage app (canto inferior direito do app) → aba **Logs** → mesma stack trace, mas completa |
+| Tela trava/demora a cada resposta marcada no preenchimento | Era gravado no banco a cada clique (1 chamada por resposta) | Já corrigido: agora só grava com o botão "💾 Atualizar respostas" (1 chamada só, pra todas as respostas de uma vez) |
 
 ---
 
