@@ -9,10 +9,12 @@ from src.models import (
     listar_templates,
     rejeitar_sugestao,
 )
+from src.tema import aplicar_tema
 
 st.set_page_config(page_title="Sugestões", page_icon="💡", layout="centered")
 
 usuario = exigir_login()
+aplicar_tema()
 st.title("💡 Sugestões de Itens de Checklist")
 st.caption("Identificou algo em campo que deveria virar item de verificação? Sugira aqui.")
 

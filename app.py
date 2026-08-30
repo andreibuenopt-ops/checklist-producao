@@ -2,6 +2,8 @@
 import streamlit as st
 
 from src.auth import exigir_login, logout, trocar_senha
+from src.models import obter_logo_url_com_fallback
+from src.tema import aplicar_tema
 
 st.set_page_config(
     page_title="Checklist de Produção",
@@ -11,6 +13,7 @@ st.set_page_config(
 )
 
 usuario = exigir_login()
+aplicar_tema()
 
 # Senha resetada pelo master: troca obrigatória antes de qualquer outra ação
 if usuario.senha_temporaria:
@@ -37,6 +40,9 @@ if st.query_params.get("area"):
     st.switch_page("pages/1_📋_Preencher_Checklist.py")
 
 with st.sidebar:
+    logo = obter_logo_url_com_fallback()
+    if logo:
+        st.image(logo, use_container_width=True)
     st.markdown(f"**{usuario.nome}**")
     st.caption(f"Matrícula {usuario.matricula} · {usuario.papel.capitalize()}")
     if st.button("Sair", use_container_width=True):

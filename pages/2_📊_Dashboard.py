@@ -9,10 +9,12 @@ import streamlit as st
 from src.auth import exigir_login
 from src.models import checklists_do_dia, listar_templates, nomes_usuarios, respostas_por_data
 from src.turnos import agora_local
+from src.tema import aplicar_tema
 
 st.set_page_config(page_title="Dashboard", page_icon="📊", layout="wide")
 
 usuario = exigir_login()
+aplicar_tema()
 
 if not usuario.pode_ver_dashboard:
     st.error("Seu nível de acesso (produção) não permite visualizar o dashboard.")

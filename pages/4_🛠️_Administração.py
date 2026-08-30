@@ -5,8 +5,11 @@ import streamlit as st
 
 from src.auth import alternar_status, criar_usuario, exigir_login, resetar_senha
 from src.models import (
+    COR_PADRAO_GUARARAPES,
     adicionar_itens,
     alternar_equipamento,
+    atualizar_cor_primaria,
+    atualizar_logo,
     criar_equipamento,
     criar_template,
     definir_horarios_turnos,
@@ -20,21 +23,28 @@ from src.models import (
     listar_templates,
     listar_turnos,
     listar_usuarios,
+    obter_configuracoes,
+    obter_cor_primaria,
+    obter_logo_url_com_fallback,
     reativar_template,
     remover_equipamento,
     remover_item,
+    remover_logo,
+    restaurar_cor_padrao,
 )
+from src.tema import aplicar_tema
 
 st.set_page_config(page_title="Administração", page_icon="🛠️", layout="wide")
 
 usuario = exigir_login()
+aplicar_tema()
 if not usuario.pode_gerenciar_sistema:
     st.error("Acesso restrito ao administrador master.")
     st.stop()
 
 st.title("🛠️ Administração")
-tab_usuarios, tab_equipamentos, tab_novo_checklist, tab_checklists = st.tabs(
-    ["👤 Usuários", "🔧 Áreas/Equipamentos", "➕ Novo Checklist", "📋 Checklists Cadastrados"]
+tab_visual, tab_usuarios, tab_equipamentos, tab_novo_checklist, tab_checklists = st.tabs(
+    ["🎨 Identidade Visual", "👤 Usuários", "🔧 Áreas/Equipamentos", "➕ Novo Checklist", "📋 Checklists Cadastrados"]
 )
 
 NIVEIS = {
@@ -43,6 +53,64 @@ NIVEIS = {
     "coordenacao": "Coordenação — visualiza tudo, sem exportar",
     "master": "Master — acesso total, ajusta o sistema",
 }
+
+# =====================================================================
+# TAB 0 — Identidade Visual (logo + cor)
+# =====================================================================
+with tab_visual:
+    st.subheader("Logo da empresa")
+    st.caption("Aparece no menu lateral do app e nos cartazes/etiquetas de QR Code para impressão.")
+
+    config = obter_configuracoes()
+    if config and config.get("logo_url"):
+        st.image(config["logo_url"], width=240)
+        st.caption("Logo personalizada (enviada por aqui).")
+        if st.button("Remover logo e voltar para a padrão"):
+            remover_logo()
+            st.success("Logo removida. O sistema volta a usar a logo padrão do projeto.")
+            st.rerun()
+    else:
+        logo_padrao = obter_logo_url_com_fallback()
+        if logo_padrao:
+            st.image(logo_padrao, width=240)
+            st.caption("Logo padrão do projeto (Guararapes). Envie uma abaixo para substituir.")
+        else:
+            st.info("Nenhuma logo cadastrada ainda.")
+
+    arquivo_logo = st.file_uploader("Enviar logo (PNG ou JPG)", type=["png", "jpg", "jpeg"])
+    if arquivo_logo and st.button("Salvar logo", type="primary"):
+        try:
+            atualizar_logo(arquivo_logo.getvalue(), arquivo_logo.name)
+            st.success("Logo atualizada.")
+            st.rerun()
+        except Exception as e:
+            st.error(f"Erro ao enviar a logo: {e}")
+
+    st.divider()
+    st.subheader("Cor principal do sistema")
+    st.caption(
+        "Usada em botões e destaques. Padrão de fábrica: o verde da Guararapes "
+        f"({COR_PADRAO_GUARARAPES}). Aplica na hora, sem precisar mexer em código."
+    )
+    st.caption(
+        "⚠️ Cobre a maioria dos botões, mas o Streamlit não garante troca de tema "
+        "em tempo real para 100% dos elementos. Se algo não acompanhar a cor, "
+        "o método garantido é editar `primaryColor` em `.streamlit/config.toml` "
+        "e fazer redeploy (veja o GUIA_MANUTENCAO.md)."
+    )
+
+    cor_atual = obter_cor_primaria()
+    nova_cor = st.color_picker("Cor principal", value=cor_atual)
+
+    col_salvar_cor, col_restaurar_cor = st.columns(2)
+    if col_salvar_cor.button("Salvar cor", type="primary"):
+        atualizar_cor_primaria(nova_cor)
+        st.success("Cor atualizada.")
+        st.rerun()
+    if col_restaurar_cor.button("Restaurar verde Guararapes"):
+        restaurar_cor_padrao()
+        st.success("Cor restaurada para o padrão Guararapes.")
+        st.rerun()
 
 # =====================================================================
 # TAB 1 — Usuários

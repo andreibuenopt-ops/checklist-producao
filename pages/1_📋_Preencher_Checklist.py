@@ -18,10 +18,12 @@ from src.models import (
     salvar_resposta,
 )
 from src.turnos import turno_e_data_referencia
+from src.tema import aplicar_tema
 
 st.set_page_config(page_title="Preencher Checklist", page_icon="📋", layout="centered")
 
 usuario = exigir_login()
+aplicar_tema()
 st.title("📋 Preencher Checklist")
 
 # ---------------------------------------------------------------------

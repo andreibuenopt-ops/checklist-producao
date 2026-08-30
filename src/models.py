@@ -4,6 +4,7 @@ usuários e sugestões de itens.
 import re
 import unicodedata
 from datetime import date
+from pathlib import Path
 
 from src.db import supabase
 
@@ -366,10 +367,18 @@ def rejeitar_sugestao(sugestao_id: str, master_id: str, motivo: str):
 
 
 # =====================================================================
-# Análise 5 Porquês (RCA) — ESTRUTURA PROVISÓRIA, aguardando spec final
+# Análise 5 Porquês (RCA) — "Formulário 5 Porquês – Parada de Linha"
 # =====================================================================
+JANELA_MINUTOS_MIN = 30
+JANELA_MINUTOS_MAX = 90  # 1h30min — regra impressa no formulário
+
+
 def respostas_nao_criticas_sem_analise(dias: int = 30):
-    """Respostas 'Não' em itens críticos, nos últimos N dias, sem RCA aberta ainda."""
+    """Respostas 'Não' em itens críticos, nos últimos N dias, sem RCA aberta ainda.
+
+    Usada só como atalho opcional (pré-preencher a partir de um checklist);
+    o formulário também pode ser aberto avulso, sem essa origem.
+    """
     from datetime import date, timedelta
     desde = (date.today() - timedelta(days=dias)).isoformat()
 
@@ -393,25 +402,181 @@ def respostas_nao_criticas_sem_analise(dias: int = 30):
     return [r for r in respostas.data if r["id"] not in ja_analisadas]
 
 
-def criar_analise_5_porques(checklist_resposta_id: str, template_id: str, problema: str, criado_por_id: str):
-    return supabase.table("analises_5_porques").insert({
-        "checklist_resposta_id": checklist_resposta_id,
-        "template_id": template_id,
-        "problema": problema.strip(),
-        "criado_por": criado_por_id,
-    }).execute().data[0]
+def criar_analise_5_porques(dados: dict, criado_por_id: str) -> dict:
+    """dados: data_parada, equipamento, setor, responsavel_id, tempo_parada_minutos,
+    descricao_problema, problema, porque_1..5, causa_raiz, e opcionalmente
+    checklist_resposta_id/template_id se originada de um checklist."""
+    payload = {**dados, "criado_por": criado_por_id}
+    return supabase.table("analises_5_porques").insert(payload).execute().data[0]
 
 
 def listar_analises_5_porques(status: str | None = None):
     q = (
         supabase.table("analises_5_porques")
-        .select("*, checklist_templates(titulo, area)")
-        .order("criado_em", desc=True)
+        .select("*, responsavel:usuarios!analises_5_porques_responsavel_id_fkey(nome, papel)")
+        .order("data_parada", desc=True)
     )
     if status:
         q = q.eq("status", status)
     return q.execute().data
 
 
+def buscar_analise_5_porques(analise_id: str) -> dict | None:
+    res = (
+        supabase.table("analises_5_porques")
+        .select("*, responsavel:usuarios!analises_5_porques_responsavel_id_fkey(nome, papel)")
+        .eq("id", analise_id)
+        .limit(1)
+        .execute()
+    )
+    return res.data[0] if res.data else None
+
+
 def atualizar_analise_5_porques(analise_id: str, campos: dict):
     supabase.table("analises_5_porques").update(campos).eq("id", analise_id).execute()
+
+
+def registrar_verificacao_eficacia(analise_id: str, eficaz: bool, evidencias: str, verificado_por_id: str):
+    supabase.table("analises_5_porques").update({
+        "eficaz": eficaz,
+        "evidencias": evidencias.strip(),
+        "verificado_por": verificado_por_id,
+        "verificado_em": "now()",
+        "status": "concluida" if eficaz else "em_andamento",
+    }).eq("id", analise_id).execute()
+
+
+# ---------------------------------------------------------------------
+# Plano de Ação (tabela "Ação Corretiva | Responsável | Prazo", N linhas)
+# ---------------------------------------------------------------------
+def listar_acoes_5_porques(analise_id: str):
+    return (
+        supabase.table("analise_5_porques_acoes")
+        .select("*")
+        .eq("analise_id", analise_id)
+        .order("ordem")
+        .execute()
+        .data
+    )
+
+
+def adicionar_acao_5_porques(analise_id: str, acao_corretiva: str, responsavel: str, prazo: str | None):
+    atuais = listar_acoes_5_porques(analise_id)
+    proxima_ordem = max((a["ordem"] for a in atuais), default=0) + 1
+    return supabase.table("analise_5_porques_acoes").insert({
+        "analise_id": analise_id,
+        "ordem": proxima_ordem,
+        "acao_corretiva": acao_corretiva.strip(),
+        "responsavel": (responsavel or "").strip(),
+        "prazo": prazo,
+    }).execute().data[0]
+
+
+def alternar_conclusao_acao(acao_id: str, concluida: bool):
+    supabase.table("analise_5_porques_acoes").update({"concluida": concluida}).eq("id", acao_id).execute()
+
+
+def remover_acao_5_porques(acao_id: str):
+    supabase.table("analise_5_porques_acoes").delete().eq("id", acao_id).execute()
+
+
+# =====================================================================
+# Configurações do sistema — logo da empresa (Supabase Storage)
+# =====================================================================
+LOGO_BUCKET = "logos"
+
+
+def obter_configuracoes():
+    res = supabase.table("configuracoes_sistema").select("*").eq("id", 1).limit(1).execute()
+    return res.data[0] if res.data else None
+
+
+def atualizar_logo(conteudo: bytes, nome_arquivo: str) -> str:
+    extensao = nome_arquivo.rsplit(".", 1)[-1].lower()
+    caminho = f"logo.{extensao}"
+    content_type = f"image/{'jpeg' if extensao in ('jpg', 'jpeg') else extensao}"
+    opcoes = {"content-type": content_type, "upsert": "true"}
+
+    try:
+        supabase.storage.from_(LOGO_BUCKET).upload(caminho, conteudo, opcoes)
+    except Exception:
+        supabase.storage.from_(LOGO_BUCKET).update(caminho, conteudo, opcoes)
+
+    url_publica = supabase.storage.from_(LOGO_BUCKET).get_public_url(caminho)
+    supabase.table("configuracoes_sistema").update({
+        "logo_path": caminho,
+        "logo_url": url_publica,
+    }).eq("id", 1).execute()
+    return url_publica
+
+
+def remover_logo():
+    config = obter_configuracoes()
+    if config and config.get("logo_path"):
+        try:
+            supabase.storage.from_(LOGO_BUCKET).remove([config["logo_path"]])
+        except Exception:
+            pass
+    supabase.table("configuracoes_sistema").update({
+        "logo_path": None,
+        "logo_url": None,
+    }).eq("id", 1).execute()
+
+
+def obter_logo_bytes():
+    """Usada na geração do cartaz/etiqueta de QR Code (precisa dos bytes, não só da URL)."""
+    config = obter_configuracoes()
+    if not config or not config.get("logo_path"):
+        return None
+    try:
+        return supabase.storage.from_(LOGO_BUCKET).download(config["logo_path"])
+    except Exception:
+        return None
+
+
+# Logo padrão embutida no projeto (assets/), usada só até o master subir
+# uma pela Administração pela primeira vez. Depois disso, a do Storage
+# sempre tem prioridade — esse arquivo local nunca é sobrescrito.
+LOGO_LOCAL_FALLBACK = Path(__file__).resolve().parent.parent / "assets" / "logo_guararapes.png"
+
+
+def obter_logo_bytes_com_fallback():
+    """Para uso em geração de imagem/PDF (qrcode_gen), que precisa de bytes."""
+    conteudo = obter_logo_bytes()
+    if conteudo:
+        return conteudo
+    if LOGO_LOCAL_FALLBACK.exists():
+        return LOGO_LOCAL_FALLBACK.read_bytes()
+    return None
+
+
+def obter_logo_url_com_fallback():
+    """Para uso em st.image() (aceita tanto URL quanto caminho local)."""
+    config = obter_configuracoes()
+    if config and config.get("logo_url"):
+        return config["logo_url"]
+    if LOGO_LOCAL_FALLBACK.exists():
+        return str(LOGO_LOCAL_FALLBACK)
+    return None
+
+
+# Verde extraído por pixel da logo Guararapes (folha) — é o padrão de
+# fábrica. Editável em Administração → Identidade Visual sem redeploy
+# (best-effort via CSS, ver src/tema.py); o método garantido pra qualquer
+# widget é editar .streamlit/config.toml e fazer redeploy.
+COR_PADRAO_GUARARAPES = "#667f38"
+
+
+def obter_cor_primaria() -> str:
+    config = obter_configuracoes()
+    if config and config.get("cor_primaria"):
+        return config["cor_primaria"]
+    return COR_PADRAO_GUARARAPES
+
+
+def atualizar_cor_primaria(cor_hex: str):
+    supabase.table("configuracoes_sistema").update({"cor_primaria": cor_hex}).eq("id", 1).execute()
+
+
+def restaurar_cor_padrao():
+    atualizar_cor_primaria(COR_PADRAO_GUARARAPES)

@@ -5,12 +5,14 @@ import streamlit as st
 
 from src.auth import exigir_login
 from src.db import app_base_url
-from src.models import listar_templates
+from src.models import listar_templates, obter_logo_bytes_com_fallback
 from src.qrcode_gen import gerar_cartaz_pdf, gerar_etiqueta_png, url_do_checklist
+from src.tema import aplicar_tema
 
 st.set_page_config(page_title="Gerar QR Codes", page_icon="🖨️", layout="centered")
 
 usuario = exigir_login()
+aplicar_tema()
 
 if not usuario.pode_gerar_qrcodes:
     st.warning("Seu nível de acesso não permite gerar QR Codes.")
@@ -26,6 +28,7 @@ o checklist certo (não é preciso trocar o papel a cada turno ou dia).
 )
 
 base_url = st.text_input("URL pública do app (após o deploy)", value=app_base_url())
+logo_bytes = obter_logo_bytes_com_fallback()
 
 templates = listar_templates()
 if not templates:
@@ -43,7 +46,9 @@ for setor_nome, grupo in groupby(
             st.caption(f"{template['area']} · {template['codigo']} · {url}")
 
             col_img, col_botoes = st.columns([1, 1])
-            etiqueta_png = gerar_etiqueta_png(template["titulo"], template["area"], template["codigo"], url)
+            etiqueta_png = gerar_etiqueta_png(
+                template["titulo"], template["area"], template["codigo"], url, logo_bytes,
+            )
             with col_img:
                 st.image(etiqueta_png, width=220)
 
@@ -56,7 +61,9 @@ for setor_nome, grupo in groupby(
                     use_container_width=True,
                     key=f"png_{template['id']}",
                 )
-                cartaz_pdf = gerar_cartaz_pdf(template["titulo"], template["area"], template["codigo"], url)
+                cartaz_pdf = gerar_cartaz_pdf(
+                    template["titulo"], template["area"], template["codigo"], url, logo_bytes,
+                )
                 st.download_button(
                     "⬇️ Baixar cartaz PDF (A5, para impressão)",
                     data=cartaz_pdf,

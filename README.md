@@ -1,5 +1,9 @@
 # Checklist Diário Rotineiro — Produção MDF
 
+> **Quebrou algo ou precisa mexer no código?** Veja primeiro o
+> [`GUIA_MANUTENCAO.md`](./GUIA_MANUTENCAO.md) — mapa do projeto, como
+> cada fluxo funciona, e os erros já vistos com a solução.
+
 Sistema em **Python (Streamlit + Supabase)** para digitalizar os checklists
 de inspeção das 9 áreas de uma planta de MDF, do pátio de madeira ao
 acabamento. Cada área tem um **QR Code fixo** para imprimir e colar no

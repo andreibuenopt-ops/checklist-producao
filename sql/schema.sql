@@ -23,6 +23,45 @@ alter default privileges in schema public
 -- Cobre também tabelas já existentes (reaplicação em banco já criado):
 grant select, insert, update, delete on all tables in schema public to anon, authenticated;
 
+-- Mesma classe de proteção para o schema storage (usado pela logo abaixo) —
+-- evita repetir o mesmo "permission denied" já visto no schema public.
+grant usage on schema storage to anon, authenticated;
+grant select, insert, update, delete on storage.objects to anon, authenticated;
+grant select on storage.buckets to anon, authenticated;
+
+-- ---------------------------------------------------------------------
+-- CONFIGURAÇÕES DO SISTEMA — linha única (singleton): logo da empresa e
+-- cor principal do tema, exibidas no menu lateral e nos QR Codes.
+-- Editável em Administração → Identidade Visual. Arquivo da logo fica no
+-- Storage (bucket público "logos"), só a URL/caminho ficam nesta tabela.
+-- ---------------------------------------------------------------------
+create table if not exists configuracoes_sistema (
+    id             smallint primary key default 1,
+    logo_path      text,
+    logo_url       text,
+    cor_primaria   text not null default '#667f38', -- verde Guararapes
+    atualizado_em  timestamptz not null default now(),
+    check (id = 1)
+);
+
+-- Cobre quem já rodou uma versão anterior do schema sem esta coluna:
+alter table configuracoes_sistema add column if not exists cor_primaria text not null default '#667f38';
+
+insert into configuracoes_sistema (id) values (1) on conflict (id) do nothing;
+
+drop trigger if exists trg_config_atualizado_em on configuracoes_sistema;
+create trigger trg_config_atualizado_em
+    before update on configuracoes_sistema
+    for each row execute function set_atualizado_em();
+
+insert into storage.buckets (id, name, public)
+values ('logos', 'logos', true)
+on conflict (id) do nothing;
+
+drop policy if exists "app_full_access_logos" on storage.objects;
+create policy "app_full_access_logos" on storage.objects
+    for all using (bucket_id = 'logos') with check (bucket_id = 'logos');
+
 -- ---------------------------------------------------------------------
 -- USUÁRIOS
 -- Níveis de acesso:
@@ -215,31 +254,65 @@ create table if not exists checklist_sugestoes (
 );
 
 -- ---------------------------------------------------------------------
--- ANÁLISE 5 PORQUÊS (RCA) — ESTRUTURA PROVISÓRIA
--- Aba solicitada para ser criada agora; especificação final ainda será
--- enviada. Campos padrão de RCA (5 whys) vinculados a uma resposta "Não"
--- de item crítico. Ajustar/estender quando a spec definitiva chegar —
--- nenhuma outra tabela depende desta.
+-- ANÁLISE 5 PORQUÊS (RCA) — "FORMULÁRIO 5 PORQUÊS – PARADA DE LINHA"
+-- Estrutura definitiva, espelhando o formulário físico da Guararapes.
+-- Substitui a versão provisória anterior (drop + recreate: tabela nova,
+-- sem uso em produção ainda, então é seguro recriar do zero).
+-- Regra do formulário: preencher para paradas entre 30min e 1h30min
+-- (validado só como aviso na UI, não trava o registro).
 -- ---------------------------------------------------------------------
-create table if not exists analises_5_porques (
-    id                      uuid primary key default gen_random_uuid(),
-    checklist_resposta_id   uuid references checklist_respostas(id),
-    template_id             uuid references checklist_templates(id),
-    problema                text not null,
-    porque_1                text,
-    porque_2                text,
-    porque_3                text,
-    porque_4                text,
-    porque_5                text,
-    causa_raiz              text,
-    acao_corretiva          text,
-    responsavel_id          uuid references usuarios(id),
-    prazo                   date,
-    status                  text not null default 'aberta'
-                            check (status in ('aberta', 'em_andamento', 'concluida')),
-    criado_por              uuid not null references usuarios(id),
-    criado_em               timestamptz not null default now(),
-    atualizado_em           timestamptz not null default now()
+drop table if exists analise_5_porques_acoes cascade;
+drop table if exists analises_5_porques cascade;
+
+create table analises_5_porques (
+    id                     uuid primary key default gen_random_uuid(),
+
+    -- Origem opcional: se a análise nasceu de um "Não" de item crítico
+    -- no checklist (fluxo automático). Pode ficar em branco — o
+    -- formulário físico também é preenchido de forma avulsa.
+    checklist_resposta_id  uuid references checklist_respostas(id),
+    template_id            uuid references checklist_templates(id),
+
+    -- Cabeçalho do formulário
+    data_parada            date not null default current_date,
+    equipamento            text not null,
+    setor                  text not null,
+    responsavel_id         uuid references usuarios(id),
+    tempo_parada_minutos   integer,
+
+    -- Descrição do problema + tabela dos 5 porquês
+    descricao_problema     text not null,
+    problema               text,
+    porque_1               text,
+    porque_2               text,
+    porque_3               text,
+    porque_4               text,
+    porque_5               text,
+    causa_raiz             text,
+
+    -- Verificação da eficácia (Coordenador de produção)
+    eficaz                 boolean,
+    verificado_por         uuid references usuarios(id),
+    verificado_em          timestamptz,
+    evidencias             text,
+
+    status                 text not null default 'aberta'
+                           check (status in ('aberta', 'em_andamento', 'concluida')),
+    criado_por             uuid not null references usuarios(id),
+    criado_em              timestamptz not null default now(),
+    atualizado_em          timestamptz not null default now()
+);
+
+-- Plano de Ação — tabela "Ação Corretiva | Responsável | Prazo" do
+-- formulário, com múltiplas linhas (o papel tem 5 linhas em branco).
+create table analise_5_porques_acoes (
+    id              uuid primary key default gen_random_uuid(),
+    analise_id      uuid not null references analises_5_porques(id) on delete cascade,
+    ordem           smallint not null default 1,
+    acao_corretiva  text not null,
+    responsavel     text,
+    prazo           date,
+    concluida       boolean not null default false
 );
 
 drop trigger if exists trg_5porques_atualizado_em on analises_5_porques;
@@ -261,7 +334,9 @@ create index if not exists idx_templates_ativo_ordem         on checklist_templa
 create index if not exists idx_itens_criticidade             on checklist_template_itens (criticidade);
 create index if not exists idx_sugestoes_status               on checklist_sugestoes (status);
 create index if not exists idx_sugestoes_template              on checklist_sugestoes (template_id);
-create index if not exists idx_5porques_status                on analises_5_porques (status);
+create index if not exists idx_5porques_status                 on analises_5_porques (status);
+create index if not exists idx_5porques_data                   on analises_5_porques (data_parada);
+create index if not exists idx_5porques_acoes_analise           on analise_5_porques_acoes (analise_id);
 
 -- ---------------------------------------------------------------------
 -- VIEWS auxiliares (uso futuro em BI/relatórios; não consumidas pelo app)
@@ -307,6 +382,8 @@ alter table checklists enable row level security;
 alter table checklist_respostas enable row level security;
 alter table checklist_sugestoes enable row level security;
 alter table analises_5_porques enable row level security;
+alter table analise_5_porques_acoes enable row level security;
+alter table configuracoes_sistema enable row level security;
 
 drop policy if exists "app_full_access" on usuarios;
 create policy "app_full_access" on usuarios for all using (true) with check (true);
@@ -330,6 +407,10 @@ drop policy if exists "app_full_access" on checklist_sugestoes;
 create policy "app_full_access" on checklist_sugestoes for all using (true) with check (true);
 drop policy if exists "app_full_access" on analises_5_porques;
 create policy "app_full_access" on analises_5_porques for all using (true) with check (true);
+drop policy if exists "app_full_access" on analise_5_porques_acoes;
+create policy "app_full_access" on analise_5_porques_acoes for all using (true) with check (true);
+drop policy if exists "app_full_access" on configuracoes_sistema;
+create policy "app_full_access" on configuracoes_sistema for all using (true) with check (true);
 
 -- =====================================================================
 -- SEED — Template 1: Sifter e Ventiladores Externos
