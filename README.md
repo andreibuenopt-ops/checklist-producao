@@ -41,12 +41,12 @@ checklist-producao/
 
 ## Níveis de acesso
 
-| Papel | Preenche checklist | Assina checklist | Vê dashboard | Exporta dashboard | Gera QR Code | Administração |
-|---|---|---|---|---|---|---|
-| **producao** | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| **supervisor** | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
-| **coordenacao** | ✅ | ✅ | ✅ | ❌ | ✅ | ❌ |
-| **master** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Papel | Preenche checklist | Escolhe checklist manualmente | Assina checklist | Vê dashboard | Exporta dashboard | Gera QR Code | Administração |
+|---|---|---|---|---|---|---|---|
+| **producao** | ✅ (só via QR Code) | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| **supervisor** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
+| **coordenacao** | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ❌ |
+| **master** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 
 Cada colaborador tem registro próprio: **crachá (matrícula)**, **e-mail da
 empresa** e **senha pessoal**. Não existe autocadastro — só o master cria

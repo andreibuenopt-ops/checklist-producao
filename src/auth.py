@@ -46,6 +46,13 @@ class Usuario:
     def pode_gerenciar_sistema(self) -> bool:
         return self.papel == "master"
 
+    @property
+    def pode_escolher_checklist_manualmente(self) -> bool:
+        """Produção só preenche via QR Code fixo na área — sem escolher
+        manualmente qual checklist abrir. Os demais papéis podem, para
+        verificação/teste/administração."""
+        return self.papel in ("supervisor", "coordenacao", "master")
+
 
 def _usuario_from_row(row: dict) -> Usuario:
     return Usuario(

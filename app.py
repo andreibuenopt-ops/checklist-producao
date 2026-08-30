@@ -42,14 +42,20 @@ if st.query_params.get("area"):
 mostrar_usuario_logado(usuario)
 
 st.title("✅ Checklist Diário Rotineiro")
-st.markdown(
-    """
+
+if usuario.pode_escolher_checklist_manualmente:
+    texto_preencher = (
+        "- **📋 Preencher Checklist** — abra pelo QR Code fixado na área, ou escolha manualmente "
+        "aqui no menu lateral."
+    )
+else:
+    texto_preencher = "- **📋 Preencher Checklist** — escaneie o QR Code fixado na área para abrir o checklist."
+
+st.markdown(f"""
 Bem-vindo(a) ao sistema de checklists de inspeção.
 
-- **📋 Preencher Checklist** — abra pelo QR Code fixado na área, ou escolha manualmente
-  aqui no menu lateral.
-"""
-)
+{texto_preencher}
+""")
 
 if usuario.pode_ver_dashboard:
     st.markdown("- **📊 Dashboard** — acompanhe os checklists do dia atual ou de qualquer dia passado.")

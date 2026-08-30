@@ -31,12 +31,19 @@ st.title("📋 Preencher Checklist")
 st.caption(f"Preenchendo como **{usuario.nome}** · {usuario.papel.capitalize()}")
 
 # ---------------------------------------------------------------------
-# 1) Escolher a área (via QR Code ?area=slug, ou manualmente por setor)
+# 1) Escolher a área (via QR Code ?area=slug, ou manualmente por setor
+#    — manual só disponível pra supervisor/coordenação/master; produção
+#    é obrigada a vir de um QR Code fixo na área)
 # ---------------------------------------------------------------------
 slug = st.query_params.get("area")
 template = buscar_template_por_slug(slug) if slug else None
 
 if not template:
+    if not usuario.pode_escolher_checklist_manualmente:
+        st.error("📷 Escaneie o QR Code fixado na área para abrir o checklist correspondente.")
+        st.info("Seu nível de acesso (Produção) só permite preencher pelo QR Code — não é possível escolher manualmente.")
+        st.stop()
+
     templates = listar_templates()
     if not templates:
         st.warning("Nenhum checklist cadastrado ainda.")
