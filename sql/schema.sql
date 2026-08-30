@@ -7,6 +7,23 @@
 create extension if not exists pgcrypto;
 
 -- ---------------------------------------------------------------------
+-- GRANT no schema public para os roles anon/authenticated.
+-- Necessário porque em alguns projetos Supabase os default privileges
+-- do schema public não vêm pré-configurados para tabelas criadas via
+-- SQL Editor (diferente de tabelas criadas pela Table Editor UI). Sem
+-- isso, mesmo com RLS permissivo, o Postgres nega antes de a policy
+-- ser avaliada: "permission denied for table X (42501)". Roda sempre,
+-- de forma idempotente — sem custo mesmo se já estiver configurado.
+-- Para tabelas futuras (criadas depois deste script), o "alter default
+-- privileges" garante que o GRANT se aplica automaticamente.
+-- ---------------------------------------------------------------------
+grant usage on schema public to anon, authenticated;
+alter default privileges in schema public
+    grant select, insert, update, delete on tables to anon, authenticated;
+-- Cobre também tabelas já existentes (reaplicação em banco já criado):
+grant select, insert, update, delete on all tables in schema public to anon, authenticated;
+
+-- ---------------------------------------------------------------------
 -- USUÁRIOS
 -- Níveis de acesso:
 --   master       -> ajuste de sistema, cadastra usuários, cria checklists,

@@ -1,4 +1,6 @@
 """Painel do administrador master: usuários e checklists."""
+from datetime import time
+
 import streamlit as st
 
 from src.auth import alternar_status, criar_usuario, exigir_login, resetar_senha
@@ -9,6 +11,8 @@ from src.models import (
     criar_template,
     definir_horarios_turnos,
     desativar_template,
+    editar_horario,
+    editar_item,
     listar_equipamentos,
     listar_horarios_todos_turnos,
     listar_itens,
@@ -225,6 +229,8 @@ with tab_novo_checklist:
 # TAB 4 — Checklists cadastrados
 # =====================================================================
 with tab_checklists:
+    CRITICIDADES = ["media", "alta", "critica"]
+
     templates = listar_templates(apenas_ativos=False)
     for t in templates:
         setor_nome = (t.get("setores_processo") or {}).get("nome", "—")
@@ -233,21 +239,78 @@ with tab_checklists:
         with st.expander(f"{'🟢' if t['ativo'] else '⚪'} {t['titulo']} · {rotulo_area}"):
             st.caption(f"{t['codigo']} · slug: {t['slug']}")
 
+            # -----------------------------------------------------------
+            # Horários de checagem por turno — editável
+            # -----------------------------------------------------------
+            st.markdown("**🕒 Horário de checagem por turno**")
             horarios = listar_horarios_todos_turnos(t["id"])
-            if horarios:
-                linha_horarios = " · ".join(
-                    f"{h['turnos']['nome']}: {h['horario'][:5]}" for h in horarios
-                )
-                st.caption(f"🕒 {linha_horarios}")
+            for h in horarios:
+                chave_edit_h = f"editando_horario_{h['id']}"
+                turno_nome = h["turnos"]["nome"]
 
+                if not st.session_state.get(chave_edit_h, False):
+                    c1, c2 = st.columns([4, 1])
+                    c1.write(f"{turno_nome}: {h['horario'][:5]}")
+                    if c2.button("Editar", key=f"edit_h_{h['id']}"):
+                        st.session_state[chave_edit_h] = True
+                        st.rerun()
+                else:
+                    partes = h["horario"].split(":")
+                    hora_atual = time(int(partes[0]), int(partes[1]))
+                    with st.form(f"form_edit_horario_{h['id']}"):
+                        novo_horario = st.time_input(f"Novo horário — {turno_nome}", value=hora_atual)
+                        col_salvar, col_cancelar = st.columns(2)
+                        salvar_h = col_salvar.form_submit_button("Salvar", type="primary")
+                        cancelar_h = col_cancelar.form_submit_button("Cancelar")
+                    if salvar_h:
+                        editar_horario(h["id"], novo_horario.strftime("%H:%M"))
+                        st.session_state[chave_edit_h] = False
+                        st.rerun()
+                    if cancelar_h:
+                        st.session_state[chave_edit_h] = False
+                        st.rerun()
+
+            st.divider()
+
+            # -----------------------------------------------------------
+            # Itens de inspeção — editável (pergunta + criticidade)
+            # -----------------------------------------------------------
+            st.markdown("**Itens de inspeção**")
             itens = listar_itens(t["id"])
             for item in itens:
-                c1, c2 = st.columns([5, 1])
-                c1.write(f"**[{item['criticidade']}]** {item['pergunta']}")
-                if c2.button("Remover", key=f"rm_{item['id']}"):
-                    remover_item(item["id"])
-                    st.rerun()
+                chave_edit_i = f"editando_item_{item['id']}"
 
+                if not st.session_state.get(chave_edit_i, False):
+                    c1, c2, c3 = st.columns([5, 1, 1])
+                    c1.write(f"**[{item['criticidade']}]** {item['pergunta']}")
+                    if c2.button("Editar", key=f"edit_i_{item['id']}"):
+                        st.session_state[chave_edit_i] = True
+                        st.rerun()
+                    if c3.button("Remover", key=f"rm_{item['id']}"):
+                        remover_item(item["id"])
+                        st.rerun()
+                else:
+                    with st.form(f"form_edit_item_{item['id']}"):
+                        nova_pergunta = st.text_area("Pergunta", value=item["pergunta"])
+                        nova_criticidade = st.selectbox(
+                            "Criticidade", CRITICIDADES,
+                            index=CRITICIDADES.index(item["criticidade"]),
+                        )
+                        col_salvar, col_cancelar = st.columns(2)
+                        salvar_i = col_salvar.form_submit_button("Salvar", type="primary")
+                        cancelar_i = col_cancelar.form_submit_button("Cancelar")
+                    if salvar_i:
+                        if not nova_pergunta.strip():
+                            st.error("A pergunta não pode ficar vazia.")
+                        else:
+                            editar_item(item["id"], nova_pergunta, nova_criticidade)
+                            st.session_state[chave_edit_i] = False
+                            st.rerun()
+                    if cancelar_i:
+                        st.session_state[chave_edit_i] = False
+                        st.rerun()
+
+            st.divider()
             if t["ativo"]:
                 if st.button("Desativar checklist", key=f"deact_{t['id']}"):
                     desativar_template(t["id"])

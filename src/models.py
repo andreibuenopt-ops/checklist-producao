@@ -139,6 +139,13 @@ def remover_item(item_id: str):
     supabase.table("checklist_template_itens").delete().eq("id", item_id).execute()
 
 
+def editar_item(item_id: str, pergunta: str, criticidade: str):
+    supabase.table("checklist_template_itens").update({
+        "pergunta": pergunta.strip(),
+        "criticidade": criticidade,
+    }).eq("id", item_id).execute()
+
+
 # =====================================================================
 # Horários de verificação por turno — definidos pelo master, um por turno
 # =====================================================================
@@ -179,6 +186,12 @@ def definir_horarios_turnos(template_id: str, horarios_por_turno: dict):
 
 def remover_horario(horario_id: str):
     supabase.table("checklist_template_horarios").delete().eq("id", horario_id).execute()
+
+
+def editar_horario(horario_id: str, novo_horario: str):
+    supabase.table("checklist_template_horarios").update({
+        "horario": novo_horario,
+    }).eq("id", horario_id).execute()
 
 
 # =====================================================================
