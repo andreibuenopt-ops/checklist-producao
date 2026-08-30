@@ -10,22 +10,33 @@ fluxo funciona por dentro, e o que fazer quando alguma coisa quebrar.
 
 ```
 checklist-producao/
-├── app.py                          → Tela inicial: login, troca de senha, menu
+├── app.py                          → Login, troca de senha, menu, E também
+│                                      renderiza o preenchimento quando chega
+│                                      via QR Code (ver seção 2.3)
 ├── pages/
-│   ├── 1_📋_Preencher_Checklist.py → Operador preenche o checklist do turno
+│   ├── 1_📋_Preencher_Checklist.py → Só o caminho manual (sidebar) — resolve
+│   │                                  o template e delega pra preenchimento_ui
 │   ├── 2_📊_Dashboard.py           → Indicadores, tabela, gráficos, exportação
 │   ├── 3_🖨️_Gerar_QRCodes.py       → Gera PNG/PDF de QR Code por área
-│   ├── 4_🛠️_Administração.py       → Logo, usuários, equipamentos, checklists
+│   ├── 4_🛠️_Administração.py       → Logo/cor, usuários, equipamentos, checklists
 │   ├── 5_💡_Sugestões.py           → Sugestão de novo item + aprovação
-│   └── 6_🔍_5_Porquês.py           → Análise de causa raiz (RCA)
+│   └── 6_🔍_5_Porquês.py           → Formulário 5 Porquês (Parada de Linha)
 ├── src/
 │   ├── db.py                       → Conexão com o Supabase (1 linha de verdade)
 │   ├── auth.py                     → Login, senha, papéis de acesso
 │   ├── turnos.py                   → Calcula qual turno está rolando agora
 │   ├── models.py                   → TODA consulta/gravação no banco passa aqui
-│   └── qrcode_gen.py               → Desenha o PNG e o PDF do QR Code
+│   ├── preenchimento_ui.py         → Formulário de preenchimento em si (usado
+│   │                                  por app.py E por pages/1_...)
+│   ├── sidebar.py                  → Logo + nome de quem está logado + Sair,
+│   │                                  chamado em toda página
+│   ├── tema.py                     → Aplica a cor de identidade visual (CSS)
+│   ├── qrcode_gen.py                → Desenha o PNG e o PDF do QR Code
+│   └── pdf_5_porques.py             → Gera o PDF do Formulário 5 Porquês
 ├── sql/
 │   └── schema.sql                  → Cria TODAS as tabelas + dados iniciais
+├── assets/
+│   └── logo_guararapes.png         → Logo padrão (fallback até subir outra)
 └── scripts/
     └── criar_master.py             → Cria o 1º usuário master (só 1x)
 ```
@@ -64,27 +75,44 @@ tudo num lugar só quando precisar corrigir algo.
   existe cache. Por isso o operador nunca preenche o turno errado: o
   sistema decide sozinho, sem depender do relógio do celular dele.
 
-### 2.3 Preencher Checklist (`pages/1_📋_...py`)
+### 2.3 Preencher Checklist (`src/preenchimento_ui.py`, chamado por `app.py` e `pages/1_📋_...py`)
 
-1. Descobre qual checklist abrir: via `?area=slug` do QR Code, ou seleção
-   manual (Setor → Checklist).
-2. Chama `obter_ou_criar_checklist()` — se já existe um registro pra esse
+**Dois pontos de entrada, um só formulário:**
+- **Via QR Code**: a URL chega em `app.py` (a raiz do site) já com `?area=slug`.
+  `app.py` resolve o template e chama `renderizar_preenchimento()` **direto
+  ali, sem trocar de página**. Isso é proposital — `st.switch_page()` tem
+  um bug do próprio Streamlit que apaga o `?area=` da URL durante a troca
+  de página ([streamlit/streamlit#9050](https://github.com/streamlit/streamlit/issues/9050)),
+  o que fazia o QR Code não abrir o checklist certo. Não usa mais
+  `switch_page` por causa disso.
+- **Via menu lateral** (só supervisor/coordenação/master —
+  `pode_escolher_checklist_manualmente`): cai em
+  `pages/1_📋_Preencher_Checklist.py`, que mostra os dois dropdowns
+  (Setor → Checklist) e chama a mesma `renderizar_preenchimento()`.
+
+**O que o formulário faz** (dentro de `renderizar_preenchimento()`):
+1. Chama `obter_ou_criar_checklist()` — se já existe um registro pra esse
    template + turno + data de hoje, reaproveita; senão cria um novo.
-3. Cada pergunta usa `st.segmented_control` (os chips ✅❌➖) — **nada é
+2. Cada pergunta usa `st.segmented_control` (os chips ✅❌➖) — **nada é
    gravado no banco a cada clique**, fica só na tela (session_state do
    Streamlit). Isso é proposital: gravar a cada resposta deixava a tela
    lenta/travando a cada clique, por causa da ida e volta ao Supabase.
-4. O botão **💾 Atualizar respostas** grava tudo de uma vez, numa única
+3. O botão **💾 Atualizar respostas** grava tudo de uma vez, numa única
    chamada (`salvar_respostas_em_lote()` — um `upsert` com várias linhas,
    em vez de N chamadas separadas). Mostra um resumo do que foi salvo e
    avisa quantos itens ficaram como "Não".
-5. Se o operador esquecer de clicar "Atualizar" e for direto pra
+4. Se o operador esquecer de clicar "Atualizar" e for direto pra
    "Concluir checklist", o próprio botão de concluir salva qualquer
    pendência antes de validar — não perde resposta por esquecimento.
-6. No fim, pede login de um supervisor/coordenação/master pra "assinar"
+5. No fim, pede login de um supervisor/coordenação/master pra "assinar"
    (`concluir_checklist()`) — é o que trava o checklist como completo e
-   **impede qualquer edição depois** (a página já checa
-   `status == "completo"` e bloqueia com `st.stop()` lá em cima).
+   **impede qualquer edição depois** (a função já checa
+   `status == "completo"` e para com `return`).
+
+**Importante ao editar**: se mudar algo no formulário, mexe só em
+`src/preenchimento_ui.py` — os dois pontos de entrada (`app.py` e
+`pages/1_...py`) chamam a mesma função, então a mudança vale pros dois
+automaticamente. Não duplique lógica entre eles.
 
 ### 2.4 Dashboard (`pages/2_📊_...py`)
 
@@ -158,6 +186,7 @@ entre 30min e 1h30min — `JANELA_MINUTOS_MIN`/`JANELA_MINUTOS_MAX` em
 | Checklist não aparece na lista pra preencher | Template está com `ativo = false` | Administração → Checklists Cadastrados → botão "Reativar checklist" |
 | Erro genérico e a mensagem vem "redacted to prevent data leaks" | Streamlit Cloud esconde detalhes do erro por padrão | Manage app (canto inferior direito do app) → aba **Logs** → mesma stack trace, mas completa |
 | Tela trava/demora a cada resposta marcada no preenchimento | Era gravado no banco a cada clique (1 chamada por resposta) | Já corrigido: agora só grava com o botão "💾 Atualizar respostas" (1 chamada só, pra todas as respostas de uma vez) |
+| Escaneou o QR Code e caiu na tela de "escolha manual" ou de bloqueio, em vez de abrir o checklist direto | Bug do próprio Streamlit: `st.switch_page()` apaga o `?area=` da URL do navegador durante a troca de página ([streamlit/streamlit#9050](https://github.com/streamlit/streamlit/issues/9050)) | Já corrigido: `app.py` não usa mais `switch_page` pra esse caso — renderiza o formulário direto, na mesma URL que veio do QR (`src/preenchimento_ui.py`) |
 
 ---
 

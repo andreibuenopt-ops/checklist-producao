@@ -2,6 +2,8 @@
 import streamlit as st
 
 from src.auth import exigir_login, logout, trocar_senha
+from src.models import buscar_template_por_slug
+from src.preenchimento_ui import renderizar_preenchimento
 from src.sidebar import mostrar_usuario_logado
 from src.tema import aplicar_tema
 
@@ -35,9 +37,21 @@ if usuario.senha_temporaria:
             st.rerun()
     st.stop()
 
-# QR code fixo por área: quem escaneia chega direto na tela de preenchimento
-if st.query_params.get("area"):
-    st.switch_page("pages/1_📋_Preencher_Checklist.py")
+# QR code fixo por área: renderiza o preenchimento AQUI MESMO, sem trocar
+# de página. st.switch_page() apaga o ?area= da URL do navegador durante
+# a troca (bug conhecido do Streamlit, streamlit/streamlit#9050) — isso
+# fazia a tela de preenchimento não saber mais qual checklist abrir.
+area_slug = st.query_params.get("area")
+if area_slug:
+    mostrar_usuario_logado(usuario)
+    template = buscar_template_por_slug(area_slug)
+    if not template:
+        st.error("QR Code inválido ou checklist desativado. Fale com o administrador.")
+        st.stop()
+    st.title("📋 Preencher Checklist")
+    st.caption(f"Preenchendo como **{usuario.nome}** · {usuario.papel.capitalize()}")
+    renderizar_preenchimento(usuario, template)
+    st.stop()
 
 mostrar_usuario_logado(usuario)
 
