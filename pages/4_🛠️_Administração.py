@@ -1,0 +1,258 @@
+"""Painel do administrador master: usuários e checklists."""
+import streamlit as st
+
+from src.auth import alternar_status, criar_usuario, exigir_login, resetar_senha
+from src.models import (
+    adicionar_itens,
+    alternar_equipamento,
+    criar_equipamento,
+    criar_template,
+    definir_horarios_turnos,
+    desativar_template,
+    listar_equipamentos,
+    listar_horarios_todos_turnos,
+    listar_itens,
+    listar_setores,
+    listar_templates,
+    listar_turnos,
+    listar_usuarios,
+    reativar_template,
+    remover_equipamento,
+    remover_item,
+)
+
+st.set_page_config(page_title="Administração", page_icon="🛠️", layout="wide")
+
+usuario = exigir_login()
+if not usuario.pode_gerenciar_sistema:
+    st.error("Acesso restrito ao administrador master.")
+    st.stop()
+
+st.title("🛠️ Administração")
+tab_usuarios, tab_equipamentos, tab_novo_checklist, tab_checklists = st.tabs(
+    ["👤 Usuários", "🔧 Áreas/Equipamentos", "➕ Novo Checklist", "📋 Checklists Cadastrados"]
+)
+
+NIVEIS = {
+    "producao": "Produção — preenche checklists",
+    "supervisor": "Supervisor — assina, visualiza e exporta dashboard, gera QR",
+    "coordenacao": "Coordenação — visualiza tudo, sem exportar",
+    "master": "Master — acesso total, ajusta o sistema",
+}
+
+# =====================================================================
+# TAB 1 — Usuários
+# =====================================================================
+with tab_usuarios:
+    st.subheader("Cadastrar usuário")
+    st.caption("Cada colaborador tem registro próprio: crachá (matrícula), e-mail da empresa e senha pessoal.")
+    with st.form("form_novo_usuario", clear_on_submit=True):
+        c1, c2 = st.columns(2)
+        nome = c1.text_input("Nome completo")
+        email = c2.text_input("E-mail da empresa")
+        c3, c4 = st.columns(2)
+        matricula = c3.text_input("Número do crachá (matrícula)")
+        papel = c4.selectbox("Nível de acesso", list(NIVEIS.keys()), format_func=lambda p: NIVEIS[p])
+        senha_inicial = st.text_input("Senha inicial", type="password")
+        if st.form_submit_button("Cadastrar", type="primary"):
+            if not all([nome, email, matricula, senha_inicial]):
+                st.error("Preencha todos os campos.")
+            elif len(senha_inicial) < 6:
+                st.error("Senha muito curta (mínimo 6 caracteres).")
+            else:
+                try:
+                    criar_usuario(nome, email, matricula, senha_inicial, papel, usuario.id)
+                    st.success(f"Usuário {nome} cadastrado.")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Erro ao cadastrar (e-mail/matrícula já existe?): {e}")
+
+    st.divider()
+    st.subheader("Usuários cadastrados")
+    usuarios = listar_usuarios()
+    st.dataframe(
+        [
+            {
+                "Nome": u["nome"], "E-mail": u["email"], "Matrícula": u["matricula"],
+                "Papel": NIVEIS.get(u["papel"], u["papel"]),
+                "Ativo": "✅" if u["ativo"] else "⛔",
+                "Senha temporária": "⚠️" if u["senha_temporaria"] else "-",
+            }
+            for u in usuarios
+        ],
+        use_container_width=True, hide_index=True,
+    )
+
+    st.divider()
+    mapa_usuarios = {f"{u['nome']} ({u['matricula']})": u["id"] for u in usuarios}
+
+    col_reset, col_status = st.columns(2)
+    with col_reset:
+        st.subheader("Resetar senha")
+        with st.form("form_reset_senha"):
+            alvo = st.selectbox("Usuário", list(mapa_usuarios.keys()))
+            nova_senha = st.text_input("Nova senha temporária", type="password")
+            if st.form_submit_button("Resetar senha"):
+                if len(nova_senha) < 6:
+                    st.error("Senha muito curta.")
+                else:
+                    resetar_senha(mapa_usuarios[alvo], nova_senha)
+                    st.success(f"Senha de {alvo} resetada. Troca obrigatória no próximo login.")
+
+    with col_status:
+        st.subheader("Ativar / Desativar")
+        with st.form("form_status_usuario"):
+            alvo2 = st.selectbox("Usuário", list(mapa_usuarios.keys()), key="sel_status")
+            acao = st.radio("Ação", ["Ativar", "Desativar"], horizontal=True)
+            if st.form_submit_button("Aplicar"):
+                alternar_status(mapa_usuarios[alvo2], acao == "Ativar")
+                st.success(f"{alvo2}: {acao.lower()} com sucesso.")
+                st.rerun()
+
+# =====================================================================
+# TAB 2 — Áreas/Equipamentos
+# Catálogo de área/equipamento específico por setor (ex.: setor "Silo
+# de Cavaco" -> Descascador, Esteira de Cavaco, Picador, Esteira Silo 1).
+# Você mantém essa lista aqui; ela alimenta o campo "área" na criação
+# de um checklist novo, na aba seguinte.
+# =====================================================================
+with tab_equipamentos:
+    setores = listar_setores()
+    mapa_setores_eq = {s["nome"]: s["id"] for s in setores}
+
+    st.subheader("Adicionar equipamento/área")
+    with st.form("form_novo_equipamento", clear_on_submit=True):
+        c1, c2 = st.columns(2)
+        setor_eq_nome = c1.selectbox("Setor", list(mapa_setores_eq.keys()), key="setor_novo_equip")
+        nome_equipamento = c2.text_input("Nome (ex: Picador, Esteira Silo 1)")
+        if st.form_submit_button("Adicionar", type="primary"):
+            if not nome_equipamento.strip():
+                st.error("Informe o nome do equipamento/área.")
+            else:
+                try:
+                    criar_equipamento(mapa_setores_eq[setor_eq_nome], nome_equipamento)
+                    st.success(f"'{nome_equipamento}' adicionado a {setor_eq_nome}.")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Erro ao adicionar (nome já existe nesse setor?): {e}")
+
+    st.divider()
+    st.subheader("Catálogo atual")
+    for setor in setores:
+        equipamentos = listar_equipamentos(setor["id"], apenas_ativos=False)
+        if not equipamentos:
+            continue
+        st.markdown(f"**{setor['nome']}**")
+        for eq in equipamentos:
+            c1, c2, c3 = st.columns([4, 1, 1])
+            c1.write(("🟢 " if eq["ativo"] else "⚪ ") + eq["nome"])
+            if eq["ativo"]:
+                if c2.button("Desativar", key=f"deact_eq_{eq['id']}"):
+                    alternar_equipamento(eq["id"], False)
+                    st.rerun()
+            else:
+                if c2.button("Reativar", key=f"react_eq_{eq['id']}"):
+                    alternar_equipamento(eq["id"], True)
+                    st.rerun()
+            if c3.button("Remover", key=f"rm_eq_{eq['id']}"):
+                try:
+                    remover_equipamento(eq["id"])
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Não é possível remover (em uso por um checklist?): {e}")
+
+# =====================================================================
+# TAB 3 — Novo Checklist
+# =====================================================================
+with tab_novo_checklist:
+    setores = listar_setores()
+    turnos = listar_turnos()
+    mapa_setores = {s["nome"]: s["id"] for s in setores}
+
+    st.subheader("Dados do checklist")
+    c1, c2 = st.columns(2)
+    codigo = c1.text_input("Código (ex: FRCDM2012.r01)")
+    titulo = c2.text_input("Título (ex: Checklist de inspeções - Prensa)")
+    setor_nome = st.selectbox("Setor do processo", list(mapa_setores.keys()))
+
+    equipamentos_do_setor = listar_equipamentos(mapa_setores[setor_nome])
+    mapa_equipamentos = {e["nome"]: e["id"] for e in equipamentos_do_setor}
+    opcoes_area = ["— Usar nome do setor —"] + list(mapa_equipamentos.keys())
+    area_escolhida = st.selectbox(
+        "Área/Equipamento específico",
+        opcoes_area,
+        help="Lista vem da aba 'Áreas/Equipamentos'. Se o setor ainda não tem itens cadastrados, use o nome do setor.",
+    )
+    equipamento_id = mapa_equipamentos.get(area_escolhida)  # None se "usar nome do setor"
+
+    revisao = st.text_input("Revisão", value="r01")
+    observacao = st.text_area(
+        "Observação padrão",
+        value="Obs.: toda resposta Não exige comentário sobre a situação, resolução ou pendência.",
+    )
+
+    st.subheader("Itens de inspeção")
+    st.caption("Uma pergunta por linha.")
+    perguntas_texto = st.text_area("Perguntas", height=200)
+    criticidade_padrao = st.selectbox("Criticidade padrão dos itens", ["media", "alta", "critica"])
+
+    st.subheader("Horário de verificação por turno")
+    st.caption("Um horário de checagem por turno — os 3 turnos da planta.")
+    horarios_input = {}
+    cols = st.columns(len(turnos))
+    for col, turno in zip(cols, turnos):
+        horarios_input[turno["id"]] = col.time_input(turno["nome"], key=f"horario_{turno['id']}")
+
+    if st.button("Criar checklist", type="primary"):
+        if not codigo or not titulo or not perguntas_texto.strip():
+            st.error("Código, título e ao menos uma pergunta são obrigatórios.")
+        else:
+            try:
+                template = criar_template(
+                    codigo, titulo, mapa_setores[setor_nome], revisao, observacao,
+                    equipamento_id=equipamento_id,
+                )
+                perguntas = [p.strip() for p in perguntas_texto.split("\n") if p.strip()]
+                adicionar_itens(template["id"], perguntas, criticidade_padrao)
+                horarios_str = {tid: h.strftime("%H:%M") for tid, h in horarios_input.items()}
+                definir_horarios_turnos(template["id"], horarios_str)
+                st.success(f"Checklist '{titulo}' criado com {len(perguntas)} itens.")
+                st.balloons()
+            except Exception as e:
+                st.error(f"Erro ao criar checklist (código/slug já existe?): {e}")
+
+# =====================================================================
+# TAB 4 — Checklists cadastrados
+# =====================================================================
+with tab_checklists:
+    templates = listar_templates(apenas_ativos=False)
+    for t in templates:
+        setor_nome = (t.get("setores_processo") or {}).get("nome", "—")
+        equipamento_nome = (t.get("equipamentos") or {}).get("nome")
+        rotulo_area = f"{setor_nome} · {equipamento_nome}" if equipamento_nome else setor_nome
+        with st.expander(f"{'🟢' if t['ativo'] else '⚪'} {t['titulo']} · {rotulo_area}"):
+            st.caption(f"{t['codigo']} · slug: {t['slug']}")
+
+            horarios = listar_horarios_todos_turnos(t["id"])
+            if horarios:
+                linha_horarios = " · ".join(
+                    f"{h['turnos']['nome']}: {h['horario'][:5]}" for h in horarios
+                )
+                st.caption(f"🕒 {linha_horarios}")
+
+            itens = listar_itens(t["id"])
+            for item in itens:
+                c1, c2 = st.columns([5, 1])
+                c1.write(f"**[{item['criticidade']}]** {item['pergunta']}")
+                if c2.button("Remover", key=f"rm_{item['id']}"):
+                    remover_item(item["id"])
+                    st.rerun()
+
+            if t["ativo"]:
+                if st.button("Desativar checklist", key=f"deact_{t['id']}"):
+                    desativar_template(t["id"])
+                    st.rerun()
+            else:
+                if st.button("Reativar checklist", key=f"react_{t['id']}"):
+                    reativar_template(t["id"])
+                    st.rerun()
