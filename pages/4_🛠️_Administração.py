@@ -3,7 +3,7 @@ from datetime import time
 
 import streamlit as st
 
-from src.auth import alternar_status, criar_usuario, exigir_login, resetar_senha
+from src.auth import alternar_status, atualizar_papel_usuario, criar_usuario, exigir_login, resetar_senha
 from src.models import (
     COR_PADRAO_GUARARAPES,
     adicionar_itens,
@@ -181,6 +181,29 @@ with tab_usuarios:
             if st.form_submit_button("Aplicar"):
                 alternar_status(mapa_usuarios[alvo2], acao == "Ativar")
                 st.success(f"{alvo2}: {acao.lower()} com sucesso.")
+                st.rerun()
+
+    st.divider()
+    st.subheader("Alterar nível de acesso")
+    st.caption(
+        "Use aqui pra ajustar quem se autocadastrou (entra sempre como "
+        "Produção) — ou pra promover/rebaixar qualquer usuário."
+    )
+    mapa_usuarios_papel = {f"{u['nome']} ({u['matricula']})": u["papel"] for u in usuarios}
+    with st.form("form_alterar_papel"):
+        alvo3 = st.selectbox("Usuário", list(mapa_usuarios.keys()), key="sel_papel")
+        papel_atual = mapa_usuarios_papel.get(alvo3, "producao")
+        novo_papel = st.selectbox(
+            "Novo nível", list(NIVEIS.keys()),
+            index=list(NIVEIS.keys()).index(papel_atual),
+            format_func=lambda p: NIVEIS[p],
+        )
+        if st.form_submit_button("Salvar novo nível", type="primary"):
+            if novo_papel == papel_atual:
+                st.info(f"{alvo3} já está como {NIVEIS[novo_papel]}.")
+            else:
+                atualizar_papel_usuario(mapa_usuarios[alvo3], novo_papel)
+                st.success(f"{alvo3} agora é {NIVEIS[novo_papel]}.")
                 st.rerun()
 
 # =====================================================================

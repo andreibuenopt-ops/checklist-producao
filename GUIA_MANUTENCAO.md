@@ -54,8 +54,15 @@ tudo num lugar só quando precisar corrigir algo.
 ### 2.1 Login (`src/auth.py`)
 
 - `exigir_login()` é chamada no topo de **toda página**. Se não tem
-  usuário na sessão (`st.session_state["usuario"]`), mostra o formulário
-  de login e trava a página com `st.stop()`.
+  usuário na sessão (`st.session_state["usuario"]`), mostra 2 abas —
+  **Entrar** e **🆕 Primeira vez aqui?** — e trava a página com `st.stop()`.
+- **Aba de cadastro**: qualquer pessoa cria a própria conta (nome, e-mail,
+  matrícula, senha). O papel é **forçado como `"producao"` direto no
+  código** (`criar_usuario(..., "producao", None)`) — o formulário nem
+  mostra campo de nível, então não tem como a pessoa se autopromover.
+  Depois de cadastrar, já loga automaticamente. Pra promover alguém, o
+  master usa Administração → Usuários → **Alterar nível de acesso**
+  (`atualizar_papel_usuario()`).
 - `autenticar(identificador, senha)` decide se o texto digitado é e-mail
   (tem `@`) ou matrícula, busca na tabela `usuarios`, confere a senha com
   `bcrypt.checkpw`.
@@ -93,17 +100,28 @@ tudo num lugar só quando precisar corrigir algo.
 **O que o formulário faz** (dentro de `renderizar_preenchimento()`):
 1. Chama `obter_ou_criar_checklist()` — se já existe um registro pra esse
    template + turno + data de hoje, reaproveita; senão cria um novo.
-2. Cada pergunta usa `st.segmented_control` (os chips ✅❌➖) — **nada é
-   gravado no banco a cada clique**, fica só na tela (session_state do
-   Streamlit). Isso é proposital: gravar a cada resposta deixava a tela
-   lenta/travando a cada clique, por causa da ida e volta ao Supabase.
-3. O botão **💾 Atualizar respostas** grava tudo de uma vez, numa única
-   chamada (`salvar_respostas_em_lote()` — um `upsert` com várias linhas,
-   em vez de N chamadas separadas). Mostra um resumo do que foi salvo e
-   avisa quantos itens ficaram como "Não".
-4. Se o operador esquecer de clicar "Atualizar" e for direto pra
-   "Concluir checklist", o próprio botão de concluir salva qualquer
-   pendência antes de validar — não perde resposta por esquecimento.
+2. **Todas as perguntas ficam dentro de um único `st.form(...)`.** Isso é
+   proposital: sem form, cada clique num chip Sim/Não/N-A reexecuta a
+   página inteira (o indicador "Stop" piscando no topo do navegador a
+   cada toque — mesmo já não gravando mais no banco a cada clique).
+   Dentro do form, nenhum clique dispara nada — só quando aperta
+   "💾 Atualizar respostas" (que é o `st.form_submit_button`) é que tudo
+   é processado de uma vez. Testado com `AppTest` do Streamlit: clicar
+   nos chips sem apertar o botão não chama `salvar_respostas_em_lote`
+   nenhuma vez; apertar o botão chama uma vez só, com todas as respostas
+   junto.
+3. Como nada reexecuta durante o preenchimento, a contagem "X pergunta(s)
+   sem resposta" / o aviso de "Não" só atualiza **depois** de apertar
+   Atualizar — fica guardado em `st.session_state[f"estado_preenchimento_{checklist_id}"]`
+   porque não dá pra recalcular a cada clique (não tem clique-a-clique
+   mais).
+4. **Não existe mais salvamento automático ao concluir.** Antes, se
+   esquecesse de apertar "Atualizar" e fosse direto pra "Concluir", o
+   sistema salvava por baixo dos panos. Agora não: como as respostas
+   dentro do form só chegam ao servidor quando o form é confirmado,
+   tentar concluir sem ter apertado "Atualizar respostas" antes trava
+   com "Confirme com 'Atualizar respostas' primeiro" — é proposital,
+   seguindo o mesmo padrão de "só processa quando confirma".
 5. No fim, pede login de um supervisor/coordenação/master pra "assinar"
    (`concluir_checklist()`) — é o que trava o checklist como completo e
    **impede qualquer edição depois** (a função já checa
@@ -185,7 +203,7 @@ entre 30min e 1h30min — `JANELA_MINUTOS_MIN`/`JANELA_MINUTOS_MAX` em
 | Login falha sem mensagem clara | Secrets do Streamlit Cloud desalinhados com o projeto Supabase certo | Manage app → Settings → Secrets: confere se `SUPABASE_URL`/`SUPABASE_KEY` batem com o projeto que você rodou o `schema.sql` |
 | Checklist não aparece na lista pra preencher | Template está com `ativo = false` | Administração → Checklists Cadastrados → botão "Reativar checklist" |
 | Erro genérico e a mensagem vem "redacted to prevent data leaks" | Streamlit Cloud esconde detalhes do erro por padrão | Manage app (canto inferior direito do app) → aba **Logs** → mesma stack trace, mas completa |
-| Tela trava/demora a cada resposta marcada no preenchimento | Era gravado no banco a cada clique (1 chamada por resposta) | Já corrigido: agora só grava com o botão "💾 Atualizar respostas" (1 chamada só, pra todas as respostas de uma vez) |
+| Tela trava/demora a cada resposta marcada no preenchimento | Cada clique reexecutava a página inteira (indicador "Stop" piscando) | Já corrigido: perguntas ficam dentro de um `st.form()` — nenhum clique dispara nada, só o botão "💾 Atualizar respostas" processa tudo de uma vez |
 | Escaneou o QR Code e caiu na tela de "escolha manual" ou de bloqueio, em vez de abrir o checklist direto | Bug do próprio Streamlit: `st.switch_page()` apaga o `?area=` da URL do navegador durante a troca de página ([streamlit/streamlit#9050](https://github.com/streamlit/streamlit/issues/9050)) | Já corrigido: `app.py` não usa mais `switch_page` pra esse caso — renderiza o formulário direto, na mesma URL que veio do QR (`src/preenchimento_ui.py`) |
 
 ---

@@ -32,6 +32,42 @@ from src.sidebar import mostrar_usuario_logado
 
 st.set_page_config(page_title="5 Porquês", page_icon="🔍", layout="wide")
 
+# Dicas de ajuda pra quem é novo em RCA — aparecem no "?" ao lado de cada
+# campo. Baseado no exemplo padrão: fusível queimado → sobrecarga →
+# lubrificação inadequada → bomba de óleo → eixo gasto → falta de filtro.
+AJUDA_PORQUE = {
+    1: (
+        "**Sintoma direto** — a falha mais óbvia e imediata que aconteceu.\n\n"
+        "Exemplo: \"Por que a máquina parou?\" → \"Porque o fusível queimou "
+        "por causa de uma sobrecarga.\""
+    ),
+    2: (
+        "**Falha mecânica/operacional** — o motivo técnico ou gatilho direto "
+        "do 1º porquê.\n\n"
+        "Exemplo: \"Por que houve sobrecarga?\" → \"Porque a lubrificação "
+        "do mancal era inadequada.\""
+    ),
+    3: (
+        "**Processo falho** — começa a se afastar da máquina em si e olhar "
+        "pra rotina/regra por trás.\n\n"
+        "Exemplo: \"Por que a lubrificação era inadequada?\" → \"Porque a "
+        "bomba de óleo não estava bombeando óleo suficiente.\""
+    ),
+    4: (
+        "**Falha humana/sistêmica** — examina se houve falha de manutenção "
+        "ou desgaste não planejado.\n\n"
+        "Exemplo: \"Por que a bomba não estava funcionando bem?\" → \"Porque "
+        "o eixo da bomba estava totalmente gasto.\""
+    ),
+    5: (
+        "**Causa raiz real** — a origem estrutural, que exige mudança "
+        "definitiva de processo ou gestão (não só trocar a peça).\n\n"
+        "Exemplo: \"Por que o eixo estava gasto?\" → \"Porque não havia "
+        "filtro instalado na bomba, permitindo entrada de resíduos.\" "
+        "(Solução definitiva: instalar filtro adequado.)"
+    ),
+}
+
 usuario = exigir_login()
 aplicar_tema()
 mostrar_usuario_logado(usuario)
@@ -103,12 +139,13 @@ with tab_nova:
 
     st.divider()
     st.subheader("Os 5 Porquês")
+    st.caption("Toque no ❔ ao lado de cada campo pra ver o significado e um exemplo.")
     problema = st.text_input("Problema — O que aconteceu? (resumo)")
-    porque_1 = st.text_area("1º Porquê — Por que aconteceu?", height=70)
-    porque_2 = st.text_area("2º Porquê — Por que isso aconteceu?", height=70)
-    porque_3 = st.text_area("3º Porquê — Por que isso aconteceu?", height=70)
-    porque_4 = st.text_area("4º Porquê — Por que isso aconteceu?", height=70)
-    porque_5 = st.text_area("5º Porquê — Por que isso aconteceu?", height=70)
+    porque_1 = st.text_area("1º Porquê (O Sintoma Direto) — Por que aconteceu?", height=70, help=AJUDA_PORQUE[1])
+    porque_2 = st.text_area("2º Porquê (A Falha Mecânica/Operacional) — Por que isso aconteceu?", height=70, help=AJUDA_PORQUE[2])
+    porque_3 = st.text_area("3º Porquê (O Processo Falho) — Por que isso aconteceu?", height=70, help=AJUDA_PORQUE[3])
+    porque_4 = st.text_area("4º Porquê (A Falha Humana/Sistêmica) — Por que isso aconteceu?", height=70, help=AJUDA_PORQUE[4])
+    porque_5 = st.text_area("5º Porquê (A Causa Raiz Real) — Por que isso aconteceu?", height=70, help=AJUDA_PORQUE[5])
     causa_raiz = st.text_area("Causa Raiz Identificada", height=70)
 
     st.divider()
@@ -172,11 +209,11 @@ with tab_abertas:
             with st.expander("Editar análise"):
                 with st.form(f"form_analise_{a['id']}"):
                     problema_e = st.text_input("Problema", value=a.get("problema") or "")
-                    porque_1_e = st.text_area("1º Porquê", value=a.get("porque_1") or "")
-                    porque_2_e = st.text_area("2º Porquê", value=a.get("porque_2") or "")
-                    porque_3_e = st.text_area("3º Porquê", value=a.get("porque_3") or "")
-                    porque_4_e = st.text_area("4º Porquê", value=a.get("porque_4") or "")
-                    porque_5_e = st.text_area("5º Porquê", value=a.get("porque_5") or "")
+                    porque_1_e = st.text_area("1º Porquê (O Sintoma Direto)", value=a.get("porque_1") or "", help=AJUDA_PORQUE[1])
+                    porque_2_e = st.text_area("2º Porquê (A Falha Mecânica/Operacional)", value=a.get("porque_2") or "", help=AJUDA_PORQUE[2])
+                    porque_3_e = st.text_area("3º Porquê (O Processo Falho)", value=a.get("porque_3") or "", help=AJUDA_PORQUE[3])
+                    porque_4_e = st.text_area("4º Porquê (A Falha Humana/Sistêmica)", value=a.get("porque_4") or "", help=AJUDA_PORQUE[4])
+                    porque_5_e = st.text_area("5º Porquê (A Causa Raiz Real)", value=a.get("porque_5") or "", help=AJUDA_PORQUE[5])
                     causa_raiz_e = st.text_area("Causa raiz", value=a.get("causa_raiz") or "")
                     if st.form_submit_button("Salvar", type="primary"):
                         atualizar_analise_5_porques(a["id"], {

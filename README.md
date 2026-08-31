@@ -49,10 +49,13 @@ checklist-producao/
 | **master** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 
 Cada colaborador tem registro próprio: **crachá (matrícula)**, **e-mail da
-empresa** e **senha pessoal**. Não existe autocadastro — só o master cria
-usuários, pela aba Administração → Usuários. Quando alguém esquece a senha,
-o master faz o reset por lá; a pessoa é obrigada a definir uma nova senha
-no próximo login.
+empresa** e **senha pessoal**. Na tela de login existe a aba **"🆕 Primeira
+vez aqui?"** — quem se cadastra sozinho entra automaticamente como
+**Produção** (não escolhe o nível, é forçado no código); o master promove
+depois pra supervisor/coordenação/master em **Administração → Usuários →
+Alterar nível de acesso**, se for o caso. Quando alguém esquece a senha,
+o master faz o reset em Administração; a pessoa é obrigada a definir uma
+nova senha no próximo login.
 
 ## Como funciona
 
@@ -194,4 +197,7 @@ acesso correto (produção / supervisor / coordenação / master).
 - RLS habilitado em todas as tabelas no Supabase; o controle de acesso real
   (quem loga, quem faz o quê) é feito pelo próprio app — a chave do
   Supabase fica em `st.secrets` e nunca chega ao navegador do usuário.
-- Sem autocadastro: só o master cria contas.
+- Autocadastro sempre entra como **producao** (nível mais baixo — só
+  preenche checklist) — a escolha de nível não é exposta na tela de
+  cadastro, é fixa no código (`criar_usuario(..., "producao", None)`).
+  Promoção pra qualquer nível acima exige o master.
