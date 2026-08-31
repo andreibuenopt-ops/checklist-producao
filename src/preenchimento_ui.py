@@ -51,6 +51,11 @@ def renderizar_preenchimento(usuario, template: dict):
     checklist = buscar_checklist(checklist["id"])  # recarrega com colaborador já setado
 
     if checklist["status"] == "completo":
+        # Tira o ?area= da URL — reabrir essa mesma aba depois não mostra
+        # mais esse checklist antigo (só limpa a URL, não é controle de
+        # acesso: login continua sendo a proteção real).
+        if "area" in st.query_params:
+            del st.query_params["area"]
         st.success("Este checklist já foi concluído e assinado. ✅")
         nomes = nomes_usuarios((checklist.get("colaborador_id"), checklist.get("supervisor_id")))
         col1, col2 = st.columns(2)
@@ -202,6 +207,8 @@ def renderizar_preenchimento(usuario, template: dict):
                 st.error("Esse usuário não tem permissão para assinar checklists.")
             else:
                 concluir_checklist(checklist["id"], assinante.id, comentario.strip())
+                if "area" in st.query_params:
+                    del st.query_params["area"]
                 st.success(f"Checklist concluído e assinado por {assinante.nome}. ✅")
                 st.balloons()
                 st.rerun()
