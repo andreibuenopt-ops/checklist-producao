@@ -597,3 +597,14 @@ def atualizar_cor_primaria(cor_hex: str):
 
 def restaurar_cor_padrao():
     atualizar_cor_primaria(COR_PADRAO_GUARARAPES)
+
+
+def obter_autocadastro_requer_aprovacao() -> bool:
+    config = obter_configuracoes()
+    return bool(config and config.get("autocadastro_requer_aprovacao"))
+
+
+def atualizar_autocadastro_requer_aprovacao(valor: bool):
+    supabase.table("configuracoes_sistema").update({
+        "autocadastro_requer_aprovacao": valor,
+    }).eq("id", 1).execute()

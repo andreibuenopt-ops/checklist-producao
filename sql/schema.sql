@@ -6,6 +6,20 @@
 
 create extension if not exists pgcrypto;
 
+-- Função utilitária usada por vários triggers "atualizado_em" ao longo
+-- do arquivo — definida aqui no topo, antes de qualquer tabela, porque
+-- a tabela configuracoes_sistema (logo abaixo) já usa ela num trigger.
+-- (Bug real encontrado rodando o schema do zero contra um Postgres
+-- limpo: antes essa função só era criada depois da tabela usuarios,
+-- mais abaixo no arquivo — configuracoes_sistema falhava em banco novo.)
+create or replace function set_atualizado_em()
+returns trigger as $$
+begin
+    new.atualizado_em = now();
+    return new;
+end;
+$$ language plpgsql;
+
 -- ---------------------------------------------------------------------
 -- GRANT no schema public para os roles anon/authenticated.
 -- Necessário porque em alguns projetos Supabase os default privileges
@@ -36,16 +50,18 @@ grant select on storage.buckets to anon, authenticated;
 -- Storage (bucket público "logos"), só a URL/caminho ficam nesta tabela.
 -- ---------------------------------------------------------------------
 create table if not exists configuracoes_sistema (
-    id             smallint primary key default 1,
-    logo_path      text,
-    logo_url       text,
-    cor_primaria   text not null default '#667f38', -- verde Guararapes
-    atualizado_em  timestamptz not null default now(),
+    id                          smallint primary key default 1,
+    logo_path                   text,
+    logo_url                    text,
+    cor_primaria                text not null default '#667f38', -- verde Guararapes
+    autocadastro_requer_aprovacao boolean not null default false,
+    atualizado_em               timestamptz not null default now(),
     check (id = 1)
 );
 
--- Cobre quem já rodou uma versão anterior do schema sem esta coluna:
+-- Cobre quem já rodou uma versão anterior do schema sem estas colunas:
 alter table configuracoes_sistema add column if not exists cor_primaria text not null default '#667f38';
+alter table configuracoes_sistema add column if not exists autocadastro_requer_aprovacao boolean not null default false;
 
 insert into configuracoes_sistema (id) values (1) on conflict (id) do nothing;
 
@@ -88,14 +104,6 @@ create table if not exists usuarios (
 
 create index if not exists idx_usuarios_papel on usuarios (papel);
 create index if not exists idx_usuarios_ativo on usuarios (ativo);
-
-create or replace function set_atualizado_em()
-returns trigger as $$
-begin
-    new.atualizado_em = now();
-    return new;
-end;
-$$ language plpgsql;
 
 drop trigger if exists trg_usuarios_atualizado_em on usuarios;
 create trigger trg_usuarios_atualizado_em
@@ -366,6 +374,56 @@ join checklist_templates ct on ct.id = c.template_id
 left join setores_processo sp on sp.id = ct.setor_id;
 
 -- =====================================================================
+-- LOGIN SEM EXPOR O HASH DA SENHA
+-- Verifica a senha DENTRO do Postgres (pgcrypto) e devolve só um
+-- boolean — o hash bcrypt nunca trafega até o app/navegador. Antes,
+-- o app buscava a linha inteira (select "*") e comparava em Python;
+-- com a chave publishable, qualquer um podia pedir "senha_hash" direto
+-- pela API sem nem passar pelo app. Essa função fecha isso.
+--
+-- security definer: roda com o dono da função (acesso total à tabela),
+-- não com o papel de quem chama (anon) — por isso funciona mesmo depois
+-- do REVOKE de senha_hash logo abaixo.
+--
+-- Normaliza o prefixo do hash ($2b$/$2y$ -> $2a$) antes de comparar:
+-- testado à mão com Postgres 16 + pgcrypto — essa build só reconhece
+-- $2a$, e o bcrypt do Python sempre gera $2b$. $2a$/$2b$ são o mesmo
+-- algoritmo (a diferença não afeta verificação de senha normal), então
+-- normalizar não enfraquece nada — só evita depender de uma versão
+-- específica de pgcrypto reconhecer $2b$.
+-- =====================================================================
+create or replace function autenticar_usuario(p_identificador text, p_senha text)
+returns table (
+    id                uuid,
+    nome              text,
+    email             text,
+    matricula         text,
+    papel             text,
+    ativo             boolean,
+    senha_temporaria  boolean,
+    senha_valida      boolean
+)
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+    return query
+    select
+        u.id, u.nome, u.email, u.matricula, u.papel, u.ativo, u.senha_temporaria,
+        (
+            regexp_replace(u.senha_hash, '^\$2[by]\$', '$2a$')
+            = crypt(p_senha, regexp_replace(u.senha_hash, '^\$2[by]\$', '$2a$'))
+        ) as senha_valida
+    from usuarios u
+    where u.email = p_identificador or u.matricula = p_identificador
+    limit 1;
+end;
+$$;
+
+grant execute on function autenticar_usuario(text, text) to anon, authenticated;
+
+-- =====================================================================
 -- RLS
 -- O app (Streamlit) roda inteiramente no servidor: a chave do Supabase
 -- fica em st.secrets e nunca chega ao navegador do usuário. O controle
@@ -387,6 +445,14 @@ alter table configuracoes_sistema enable row level security;
 
 drop policy if exists "app_full_access" on usuarios;
 create policy "app_full_access" on usuarios for all using (true) with check (true);
+
+-- Remove leitura direta do hash de senha via API — só a função
+-- autenticar_usuario() (security definer, acima) consegue ler essa
+-- coluna. INSERT/UPDATE continuam liberados (é preciso GRAVAR o hash
+-- ao criar usuário/resetar senha), só a LEITURA fica restrita.
+revoke select on usuarios from anon, authenticated;
+grant select (id, nome, email, matricula, papel, ativo, senha_temporaria, criado_por, criado_em, atualizado_em)
+    on usuarios to anon, authenticated;
 drop policy if exists "app_full_access" on turnos;
 create policy "app_full_access" on turnos for all using (true) with check (true);
 drop policy if exists "app_full_access" on setores_processo;

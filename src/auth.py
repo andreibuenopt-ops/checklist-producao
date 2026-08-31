@@ -11,6 +11,7 @@ import bcrypt
 import streamlit as st
 
 from src.db import supabase
+from src.models import obter_autocadastro_requer_aprovacao
 
 
 @dataclass
@@ -68,13 +69,22 @@ def _usuario_from_row(row: dict) -> Usuario:
 
 
 def autenticar(identificador: str, senha: str):
-    """identificador: e-mail OU matrícula (crachá). Retorna (Usuario|None, erro|None)."""
+    """identificador: e-mail OU matrícula (crachá). Retorna (Usuario|None, erro|None).
+
+    A verificação da senha acontece DENTRO do Postgres (função
+    autenticar_usuario, ver sql/schema.sql) — o hash bcrypt nunca chega
+    até aqui. supabase.rpc() chama a função; a resposta já vem só com
+    um boolean senha_valida, nunca com o hash.
+    """
     identificador = (identificador or "").strip()
     if not identificador or not senha:
         return None, "Preencha usuário e senha."
 
-    campo = "email" if "@" in identificador else "matricula"
-    res = supabase.table("usuarios").select("*").eq(campo, identificador).limit(1).execute()
+    res = supabase.rpc("autenticar_usuario", {
+        "p_identificador": identificador,
+        "p_senha": senha,
+    }).execute()
+
     if not res.data:
         return None, "Usuário não encontrado."
 
@@ -82,7 +92,7 @@ def autenticar(identificador: str, senha: str):
     if not row["ativo"]:
         return None, "Usuário desativado. Procure o administrador master."
 
-    if not bcrypt.checkpw(senha.encode(), row["senha_hash"].encode()):
+    if not row["senha_valida"]:
         return None, "Senha incorreta."
 
     return _usuario_from_row(row), None
@@ -133,18 +143,28 @@ def exigir_login() -> Usuario:
             elif senha_nova != senha_confirmar:
                 st.error("As senhas não conferem.")
             else:
+                requer_aprovacao = obter_autocadastro_requer_aprovacao()
                 try:
-                    criar_usuario(nome.strip(), email.strip(), matricula.strip(), senha_nova, "producao", None)
+                    criar_usuario(
+                        nome.strip(), email.strip(), matricula.strip(), senha_nova,
+                        "producao", None, ativo=not requer_aprovacao,
+                    )
                 except Exception as e:
                     st.error(f"Não foi possível criar a conta (e-mail ou matrícula já cadastrados?): {e}")
                 else:
-                    usuario, erro = autenticar(email.strip(), senha_nova)
-                    if usuario:
-                        st.session_state["usuario"] = usuario
-                        st.success("Conta criada! Bem-vindo(a).")
-                        st.rerun()
+                    if requer_aprovacao:
+                        st.success(
+                            "Cadastro enviado! Sua conta fica pendente até o "
+                            "administrador master ativar seu acesso."
+                        )
                     else:
-                        st.warning("Conta criada. Vá na aba \"Entrar\" pra fazer login.")
+                        usuario, erro = autenticar(email.strip(), senha_nova)
+                        if usuario:
+                            st.session_state["usuario"] = usuario
+                            st.success("Conta criada! Bem-vindo(a).")
+                            st.rerun()
+                        else:
+                            st.warning("Conta criada. Vá na aba \"Entrar\" pra fazer login.")
 
     st.stop()
 
@@ -153,7 +173,7 @@ def logout():
     st.session_state.pop("usuario", None)
 
 
-def criar_usuario(nome: str, email: str, matricula: str, senha: str, papel: str, criado_por_id: str):
+def criar_usuario(nome: str, email: str, matricula: str, senha: str, papel: str, criado_por_id: str, ativo: bool = True):
     if papel not in ("producao", "supervisor", "coordenacao", "master"):
         raise ValueError("Papel inválido.")
     senha_hash = bcrypt.hashpw(senha.encode(), bcrypt.gensalt()).decode()
@@ -166,6 +186,7 @@ def criar_usuario(nome: str, email: str, matricula: str, senha: str, papel: str,
             "senha_hash": senha_hash,
             "papel": papel,
             "criado_por": criado_por_id,
+            "ativo": ativo,
         })
         .execute()
     )

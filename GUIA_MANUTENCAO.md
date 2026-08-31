@@ -60,12 +60,27 @@ tudo num lugar só quando precisar corrigir algo.
   matrícula, senha). O papel é **forçado como `"producao"` direto no
   código** (`criar_usuario(..., "producao", None)`) — o formulário nem
   mostra campo de nível, então não tem como a pessoa se autopromover.
-  Depois de cadastrar, já loga automaticamente. Pra promover alguém, o
-  master usa Administração → Usuários → **Alterar nível de acesso**
+  Se **Administração → Usuários → "Autocadastro fica pendente até o
+  master aprovar"** estiver ligado, a conta nasce inativa e a pessoa só
+  loga depois que o master ativar (`alternar_status`); desligado (padrão),
+  já loga automaticamente. Pra promover o nível de alguém, o master usa
+  Administração → Usuários → **Alterar nível de acesso**
   (`atualizar_papel_usuario()`).
-- `autenticar(identificador, senha)` decide se o texto digitado é e-mail
-  (tem `@`) ou matrícula, busca na tabela `usuarios`, confere a senha com
-  `bcrypt.checkpw`.
+- **`autenticar(identificador, senha)` NUNCA busca o hash da senha.**
+  Chama `supabase.rpc("autenticar_usuario", ...)` — uma função Postgres
+  (`security definer`, em `sql/schema.sql`) que compara a senha *dentro*
+  do banco (`pgcrypto.crypt()`) e devolve só um `boolean`. Antes, o app
+  buscava a linha inteira (`select "*"`) e comparava em Python — com a
+  chave publishable (não-secreta por natureza), qualquer um podia pedir
+  `senha_hash` direto pela API, sem nem passar pelo app. Isso fechou essa
+  brecha: `revoke select on usuarios` + `grant select` só nas colunas
+  não-sensíveis (ver schema).
+  ⚠️ Se algum dia trocar como a senha é gerada (`bcrypt.hashpw`), lembra
+  que a função SQL normaliza `$2b$/$2y$` → `$2a$` antes de comparar —
+  testado à mão porque a build de `pgcrypto` usada não reconhecia `$2b$`
+  (o que o Python sempre gera). Não mexe nisso sem testar de novo contra
+  um Postgres de verdade — quebrar essa normalização derruba o login de
+  todo mundo.
 - Depois de logado, o objeto `Usuario` fica em `st.session_state["usuario"]`
   durante toda a sessão do navegador — por isso trocar de página não pede
   login de novo.
@@ -205,6 +220,8 @@ entre 30min e 1h30min — `JANELA_MINUTOS_MIN`/`JANELA_MINUTOS_MAX` em
 | Erro genérico e a mensagem vem "redacted to prevent data leaks" | Streamlit Cloud esconde detalhes do erro por padrão | Manage app (canto inferior direito do app) → aba **Logs** → mesma stack trace, mas completa |
 | Tela trava/demora a cada resposta marcada no preenchimento | Cada clique reexecutava a página inteira (indicador "Stop" piscando) | Já corrigido: perguntas ficam dentro de um `st.form()` — nenhum clique dispara nada, só o botão "💾 Atualizar respostas" processa tudo de uma vez |
 | Escaneou o QR Code e caiu na tela de "escolha manual" ou de bloqueio, em vez de abrir o checklist direto | Bug do próprio Streamlit: `st.switch_page()` apaga o `?area=` da URL do navegador durante a troca de página ([streamlit/streamlit#9050](https://github.com/streamlit/streamlit/issues/9050)) | Já corrigido: `app.py` não usa mais `switch_page` pra esse caso — renderiza o formulário direto, na mesma URL que veio do QR (`src/preenchimento_ui.py`) |
+| `function set_atualizado_em() does not exist` rodando `schema.sql` num banco novo do zero | Ordem errada no arquivo: `configuracoes_sistema` criava um trigger usando essa função antes dela ser definida mais abaixo | Já corrigido: a função agora é definida logo no topo do arquivo, antes de qualquer tabela |
+| Login parou de funcionar depois de mexer em como a senha é verificada | `pgcrypto.crypt()` só reconhece hash com prefixo `$2a$` — o `bcrypt` do Python sempre gera `$2b$` (confirmado testando num Postgres real) | A função `autenticar_usuario()` no schema já normaliza `$2b$/$2y$` → `$2a$` antes de comparar. Se mexer nessa função, testa de novo com um hash gerado pelo `bcrypt.hashpw()` de verdade antes de subir — não confia só na leitura do SQL |
 
 ---
 
@@ -231,18 +248,52 @@ entre 30min e 1h30min — `JANELA_MINUTOS_MIN`/`JANELA_MINUTOS_MAX` em
    rodando: `python -m py_compile nome_do_arquivo.py` (sem erro = sintaxe
    ok, não garante que a lógica está certa, só que o Python consegue ler
    o arquivo).
-3. Se mexeu no `sql/schema.sql`, **nunca** roda o arquivo inteiro de novo
+3. Roda `pytest tests/ -v` (ver seção 6) — pega regressão em login,
+   preenchimento e permissões antes de você descobrir no ar.
+4. Se mexeu no `sql/schema.sql`, **nunca** roda o arquivo inteiro de novo
    sem revisar — ele é idempotente pra criação de tabela (`if not
    exists`), mas um `update` ou `insert` sem `on conflict` pode duplicar
    dado. Se for só adicionar uma tabela nova, copia só o trecho novo pro
    SQL Editor em vez de rodar tudo.
-4. Sobe pro GitHub → confere no painel do Streamlit Cloud se o rebuild
+5. Sobe pro GitHub → confere no painel do Streamlit Cloud se o rebuild
    passou (ele mostra "Your app is in the oven" enquanto builda, e um
    erro em vermelho se falhar).
 
 ---
 
-## 6. Glossário rápido das tabelas do banco
+## 6. Testes automatizados (`tests/`)
+
+Antes de qualquer mudança em `src/auth.py`, `src/preenchimento_ui.py` ou
+nas páginas, roda a suite — ela pega regressão antes de você descobrir
+no ar:
+
+```bash
+pip install -r requirements-dev.txt --break-system-packages
+pytest tests/ -v
+```
+
+**Como funciona**: cada arquivo em `tests/fixture_apps/` é um "app de
+teste" minúsculo — importa o módulo real (`src/auth.py`,
+`src/preenchimento_ui.py`, uma página inteira), troca as funções que
+tocam o Supabase por versões falsas em memória (`monkeypatch` direto no
+módulo), e roda com `AppTest` do próprio Streamlit — a mesma ferramenta
+usada pra construir e validar esse projeto do início. Os arquivos
+`tests/test_*.py` simulam clique/digitação real (`set_value()`,
+`.click()`) e conferem o resultado.
+
+**Adicionar teste novo**: se o fluxo já tem um fixture app parecido
+(login, preenchimento), só adiciona uma função `test_...` no arquivo
+`test_*.py` correspondente. Se é fluxo novo, cria um fixture app novo em
+`tests/fixture_apps/`, seguindo o padrão dos existentes — mocka só o que
+esse fluxo específico usa, não precisa mockar tudo.
+
+**O que a suite NÃO cobre**: integração real contra Supabase/Streamlit
+Cloud — tudo aqui é com banco falso em memória. Não substitui testar no
+ambiente real depois de uma mudança grande.
+
+---
+
+## 7. Glossário rápido das tabelas do banco
 
 | Tabela | Pra que serve |
 |---|---|
@@ -258,4 +309,4 @@ entre 30min e 1h30min — `JANELA_MINUTOS_MIN`/`JANELA_MINUTOS_MAX` em
 | `checklist_sugestoes` | Sugestões de item novo, aguardando aprovação |
 | `analises_5_porques` | Formulário 5 Porquês de paradas de linha (RCA) |
 | `analise_5_porques_acoes` | Plano de ação (N linhas) de cada análise 5 Porquês |
-| `configuracoes_sistema` | Linha única: URL da logo e cor principal do sistema |
+| `configuracoes_sistema` | Linha única: logo, cor, e se autocadastro exige aprovação |

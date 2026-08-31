@@ -8,6 +8,7 @@ from src.models import (
     COR_PADRAO_GUARARAPES,
     adicionar_itens,
     alternar_equipamento,
+    atualizar_autocadastro_requer_aprovacao,
     atualizar_cor_primaria,
     atualizar_logo,
     criar_equipamento,
@@ -23,6 +24,7 @@ from src.models import (
     listar_templates,
     listar_turnos,
     listar_usuarios,
+    obter_autocadastro_requer_aprovacao,
     obter_configuracoes,
     obter_cor_primaria,
     obter_logo_url_com_fallback,
@@ -118,6 +120,22 @@ with tab_visual:
 # TAB 1 — Usuários
 # =====================================================================
 with tab_usuarios:
+    requer_aprovacao_atual = obter_autocadastro_requer_aprovacao()
+    nova_config_aprovacao = st.toggle(
+        "Autocadastro fica pendente até o master aprovar",
+        value=requer_aprovacao_atual,
+        help=(
+            "Desligado (padrão): quem se cadastra na aba \"Primeira vez aqui?\" "
+            "já entra ativo como Produção. Ligado: a conta é criada mas fica "
+            "inativa até você ativar aqui embaixo."
+        ),
+    )
+    if nova_config_aprovacao != requer_aprovacao_atual:
+        atualizar_autocadastro_requer_aprovacao(nova_config_aprovacao)
+        st.success("Configuração salva.")
+        st.rerun()
+
+    st.divider()
     st.subheader("Cadastrar usuário")
     st.caption("Cada colaborador tem registro próprio: crachá (matrícula), e-mail da empresa e senha pessoal.")
     with st.form("form_novo_usuario", clear_on_submit=True):

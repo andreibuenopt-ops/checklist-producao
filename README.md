@@ -192,12 +192,23 @@ acesso correto (produção / supervisor / coordenação / master).
 
 ## Segurança
 
-- Senhas: hash bcrypt, nunca texto puro.
+- Senhas: hash bcrypt, nunca texto puro. **A verificação da senha acontece
+  dentro do Postgres** (função `autenticar_usuario`, `security definer`) —
+  o hash nunca trafega até o app; `senha_hash` não é sequer uma coluna
+  legível via API (`revoke select` + `grant select` só nas colunas
+  públicas). Antes disso, `select "*"` buscava a linha inteira.
 - `secrets.toml` nunca é commitado.
-- RLS habilitado em todas as tabelas no Supabase; o controle de acesso real
-  (quem loga, quem faz o quê) é feito pelo próprio app — a chave do
-  Supabase fica em `st.secrets` e nunca chega ao navegador do usuário.
+- RLS habilitado em todas as tabelas. **Ressalva importante:** fora a
+  proteção de `usuarios.senha_hash` acima, o resto das tabelas ainda usa
+  `using(true)` — permissivo. O controle de acesso real (quem loga, quem
+  faz o quê) é feito pelo próprio app, não pelo Postgres. Quem tiver a
+  `SUPABASE_KEY` consegue ler/escrever direto via API, pulando o app —
+  aceitável pra uso interno, não é RLS de verdade por usuário.
 - Autocadastro sempre entra como **producao** (nível mais baixo — só
   preenche checklist) — a escolha de nível não é exposta na tela de
-  cadastro, é fixa no código (`criar_usuario(..., "producao", None)`).
-  Promoção pra qualquer nível acima exige o master.
+  cadastro, é fixa no código. Promoção pra qualquer nível acima exige o
+  master. Opcionalmente, pode exigir aprovação do master antes de ativar
+  (Administração → Usuários → toggle no topo).
+- Suite de testes automatizados em `tests/` (`pytest tests/`) cobre login,
+  autocadastro e o formulário de preenchimento — roda antes de subir
+  qualquer mudança nessas áreas.
