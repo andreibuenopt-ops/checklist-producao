@@ -391,6 +391,12 @@ left join setores_processo sp on sp.id = ct.setor_id;
 -- algoritmo (a diferença não afeta verificação de senha normal), então
 -- normalizar não enfraquece nada — só evita depender de uma versão
 -- específica de pgcrypto reconhecer $2b$.
+--
+-- search_path inclui "extensions": no Supabase (diferente de um Postgres
+-- comum), o pgcrypto é instalado no schema "extensions", não em "public".
+-- Erro real visto em produção sem isso: "function crypt(text, text) does
+-- not exist" — reproduzido e corrigido testando local com a extensão
+-- instalada em "extensions" de propósito, igual o Supabase faz.
 -- =====================================================================
 create or replace function autenticar_usuario(p_identificador text, p_senha text)
 returns table (
@@ -405,7 +411,7 @@ returns table (
 )
 language plpgsql
 security definer
-set search_path = public
+set search_path = public, extensions
 as $$
 begin
     return query
