@@ -1,7 +1,0 @@
-[theme]
-# Verde extraído da logo Guararapes (folha) — #667f38
-primaryColor = "#667f38"
-base = "light"
-
-[server]
-enableStaticServing = true
