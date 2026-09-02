@@ -16,7 +16,7 @@ from src.tema import aplicar_tema
 st.set_page_config(page_title="Preencher Checklist", page_icon="📋", layout="centered")
 
 usuario = exigir_login()
-aplicar_tema()
+aplicar_tema(usuario)
 mostrar_usuario_logado(usuario)
 st.title("📋 Preencher Checklist")
 st.caption(f"Preenchendo como **{usuario.nome}** · {usuario.papel.capitalize()}")

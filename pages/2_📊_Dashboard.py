@@ -24,7 +24,7 @@ from src.sidebar import mostrar_usuario_logado
 st.set_page_config(page_title="Dashboard", page_icon="📊", layout="wide")
 
 usuario = exigir_login()
-aplicar_tema()
+aplicar_tema(usuario)
 mostrar_usuario_logado(usuario)
 
 if not usuario.pode_ver_dashboard:
@@ -48,9 +48,14 @@ with col_area:
     nomes_areas = ["Todas as áreas"] + [t["titulo"] for t in templates]
     area_escolhida = st.selectbox("Área", nomes_areas)
 
-checklists = checklists_do_dia(data_ref)
+checklists_todos = checklists_do_dia(data_ref)
 if area_escolhida != "Todas as áreas":
-    checklists = [c for c in checklists if c["checklist_templates"]["titulo"] == area_escolhida]
+    checklists_todos = [c for c in checklists_todos if c["checklist_templates"]["titulo"] == area_escolhida]
+
+# Só o que foi assinado conta ou aparece em qualquer lugar — em andamento
+# não debita de "não iniciados" nem entra na tabela/exportação.
+checklists = [c for c in checklists_todos if c["status"] == "completo"]
+ids_completos = {c["id"] for c in checklists}
 
 respostas = respostas_por_data(data_ref)
 if area_escolhida != "Todas as áreas":
@@ -58,15 +63,15 @@ if area_escolhida != "Todas as áreas":
         r for r in respostas
         if r["checklists"]["checklist_templates"]["titulo"] == area_escolhida
     ]
+respostas = [r for r in respostas if r["checklist_id"] in ids_completos]
 
 # ---------------------------------------------------------------------
 # Cards (métricas do dia)
 # ---------------------------------------------------------------------
 n_templates = len(templates) if area_escolhida == "Todas as áreas" else 1
 esperados = n_templates * 3  # 3 turnos por dia
-criados = len(checklists)
-completos = sum(1 for c in checklists if c["status"] == "completo")
-nao_iniciados = max(esperados - criados, 0)
+completos = len(checklists)
+nao_iniciados = max(esperados - completos, 0)
 
 contagem_resp = Counter(r["resposta"] for r in respostas if r["resposta"])
 sim, nao, na = contagem_resp.get("Sim", 0), contagem_resp.get("Não", 0), contagem_resp.get("N/A", 0)
@@ -78,29 +83,22 @@ criticas_nao = sum(
     if r["resposta"] == "Não" and r["checklist_template_itens"].get("criticidade") == "critica"
 )
 
-pendencias_sem_comentario = sum(
-    1 for c in checklists
-    if c["status"] != "completo" and not (c.get("comentario") or "").strip()
-    and any(r["resposta"] == "Não" for r in respostas if r["checklist_id"] == c["id"])
-)
-
-c1, c2, c3, c4, c5, c6 = st.columns(6)
+c1, c2, c3, c4, c5 = st.columns(5)
 c1.metric("Checklists esperados", esperados)
-c2.metric("Concluídos", completos, delta=f"{criados - completos} em andamento" if criados > completos else None)
+c2.metric("Concluídos", completos)
 c3.metric("Não iniciados", nao_iniciados)
 c4.metric("Conformidade (Sim)", f"{conformidade:.0f}%" if conformidade is not None else "—")
-c5.metric("Pendências sem comentário", pendencias_sem_comentario)
-c6.metric("'Não' em itens críticos", criticas_nao, delta_color="inverse")
+c5.metric("'Não' em itens críticos", criticas_nao, delta_color="inverse")
 
 st.divider()
 
 # ---------------------------------------------------------------------
-# Tabela de checklists do dia
+# Tabela de checklists do dia (só os concluídos)
 # ---------------------------------------------------------------------
 st.subheader("Checklists do dia")
 linhas = []
 if not checklists:
-    st.info("Nenhum checklist iniciado para essa data/área ainda.")
+    st.info("Nenhum checklist concluído para essa data/área ainda.")
 else:
     ids_usuarios = tuple(
         uid for c in checklists for uid in (c.get("colaborador_id"), c.get("supervisor_id"))
@@ -138,7 +136,7 @@ if usuario.pode_exportar_dashboard and linhas:
         data_ref, area_escolhida,
         cards={
             "esperados": esperados, "completos": completos, "nao_iniciados": nao_iniciados,
-            "conformidade": conformidade, "pendencias_sem_comentario": pendencias_sem_comentario,
+            "conformidade": conformidade,
             "criticas_nao": criticas_nao,
         },
         linhas=linhas,

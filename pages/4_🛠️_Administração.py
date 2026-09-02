@@ -40,7 +40,7 @@ from src.sidebar import mostrar_usuario_logado
 st.set_page_config(page_title="Administração", page_icon="🛠️", layout="wide")
 
 usuario = exigir_login()
-aplicar_tema()
+aplicar_tema(usuario)
 mostrar_usuario_logado(usuario)
 if not usuario.pode_gerenciar_sistema:
     st.error("Acesso restrito a administrador ou master.")

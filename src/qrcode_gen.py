@@ -1,5 +1,6 @@
 """Geração de QR Code (PNG) e cartaz para impressão (PDF A5)."""
 import io
+from pathlib import Path
 
 import qrcode
 from PIL import Image, ImageDraw, ImageFont
@@ -8,6 +9,18 @@ from reportlab.lib.units import mm
 from reportlab.lib.utils import ImageReader
 from reportlab.pdfbase.pdfmetrics import stringWidth
 from reportlab.pdfgen import canvas
+
+# Fonte embutida no projeto — carregar "DejaVuSans-Bold.ttf" pelo nome
+# solto depende do servidor já ter ela instalada no sistema (não tinha
+# no Streamlit Cloud: caía no load_default(), uma fonte bitmap que
+# desenha acento errado — "inspeções" saía com traço sobreposto/feio).
+_FONTE_PATH = Path(__file__).resolve().parent.parent / "assets" / "fonts" / "DejaVuSans-Bold.ttf"
+
+
+def _carregar_fonte(tamanho: int) -> ImageFont.FreeTypeFont:
+    if _FONTE_PATH.exists():
+        return ImageFont.truetype(str(_FONTE_PATH), tamanho)
+    return ImageFont.load_default()
 
 
 def url_do_checklist(base_url: str, slug: str) -> str:
@@ -69,10 +82,7 @@ def gerar_etiqueta_png(titulo: str, area: str, codigo: str, url: str, logo_bytes
     qr_img = _gerar_qr_img(url, tamanho_caixa=8)
     largura = qr_img.width
 
-    try:
-        fonte = ImageFont.truetype("DejaVuSans-Bold.ttf", 14)
-    except Exception:
-        fonte = ImageFont.load_default()
+    fonte = _carregar_fonte(14)
 
     # Prepara a faixa da logo antes de saber o tamanho final do canvas
     faixa_logo, altura_logo = None, 50
@@ -92,7 +102,7 @@ def gerar_etiqueta_png(titulo: str, area: str, codigo: str, url: str, logo_bytes
     # Quebra de linha (em vez do corte fixo em N caracteres, que cortava palavra no meio)
     medidor = ImageDraw.Draw(Image.new("RGB", (1, 1)))
     largura_texto_max = largura - 10
-    linhas = _quebrar_linhas(medidor, titulo, fonte, largura_texto_max)
+    linhas = _quebrar_linhas(medidor, "Checklist", fonte, largura_texto_max)
     linhas += _quebrar_linhas(medidor, f"{area} · {codigo}", fonte, largura_texto_max)
     altura_linha = 20
     altura_texto = 10 + altura_linha * len(linhas)

@@ -69,7 +69,7 @@ AJUDA_PORQUE = {
 }
 
 usuario = exigir_login()
-aplicar_tema()
+aplicar_tema(usuario)
 mostrar_usuario_logado(usuario)
 st.title("🔍 Formulário 5 Porquês — Parada de Linha")
 st.caption("Preencher para paradas entre 30 minutos e 1h30min.")

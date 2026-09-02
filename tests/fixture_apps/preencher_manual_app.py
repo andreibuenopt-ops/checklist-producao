@@ -18,6 +18,7 @@ def _fake_exigir_login():
     return SimpleNamespace(
         id="u1", nome="Operador Teste", papel="producao",
         pode_escolher_checklist_manualmente=False,
+        pode_ver_dashboard=False, pode_gerar_qrcodes=False, pode_gerenciar_sistema=False,
         matricula="12345",
     )
 

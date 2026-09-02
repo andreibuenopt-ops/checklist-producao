@@ -68,7 +68,6 @@ def gerar_pdf_dashboard(
         ["Concluídos", str(cards["completos"])],
         ["Não iniciados", str(cards["nao_iniciados"])],
         ["Conformidade (Sim)", f"{cards['conformidade']:.0f}%" if cards["conformidade"] is not None else "—"],
-        ["Pendências sem comentário", str(cards["pendencias_sem_comentario"])],
         ["'Não' em itens críticos", str(cards["criticas_nao"])],
     ]
     tabela_cards = Table(linhas_cards, colWidths=[LARGURA_UTIL * 0.6, LARGURA_UTIL * 0.4])

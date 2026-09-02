@@ -15,7 +15,7 @@ st.set_page_config(
 )
 
 usuario = exigir_login()
-aplicar_tema()
+aplicar_tema(usuario)
 
 # Senha resetada pelo master: troca obrigatória antes de qualquer outra ação
 if usuario.senha_temporaria:

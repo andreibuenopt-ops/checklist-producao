@@ -14,10 +14,37 @@ import streamlit as st
 
 from src.models import obter_cor_primaria
 
+# Posição fixa de cada página na barra lateral (1=app, depois pages/1..6
+# na ordem do nome do arquivo). Se reordenar/renomear arquivo em pages/,
+# atualiza aqui também.
+_POSICAO_DASHBOARD = 3
+_POSICAO_QRCODES = 4
+_POSICAO_ADMINISTRACAO = 5
 
-def aplicar_tema():
+
+def _css_ocultar_paginas(usuario) -> str:
+    """Esconde da barra lateral o link de página que o usuário não pode
+    usar. É só cosmético — quem digitar a URL direto ainda esbarra no
+    bloqueio de dentro da própria página, que é a proteção de verdade."""
+    ocultar = []
+    if not usuario.pode_ver_dashboard:
+        ocultar.append(_POSICAO_DASHBOARD)
+    if not usuario.pode_gerar_qrcodes:
+        ocultar.append(_POSICAO_QRCODES)
+    if not usuario.pode_gerenciar_sistema:
+        ocultar.append(_POSICAO_ADMINISTRACAO)
+    if not ocultar:
+        return ""
+    seletores = ", ".join(
+        f'[data-testid="stSidebarNav"] li:nth-child({n})' for n in ocultar
+    )
+    return f"{seletores} {{ display: none !important; }}"
+
+
+def aplicar_tema(usuario=None):
     """Chame logo após `exigir_login()`, no topo de cada página."""
     cor = obter_cor_primaria()
+    css_paginas = _css_ocultar_paginas(usuario) if usuario else ""
     st.markdown(
         f"""
         <style>
@@ -31,6 +58,7 @@ def aplicar_tema():
             background-color: {cor} !important;
             border-color: {cor} !important;
         }}
+        {css_paginas}
         </style>
         """,
         unsafe_allow_html=True,
