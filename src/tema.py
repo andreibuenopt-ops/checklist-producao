@@ -41,6 +41,28 @@ def _css_ocultar_paginas(usuario) -> str:
     return f"{seletores} {{ display: none !important; }}"
 
 
+def desativar_traducao_automatica():
+    """Evita que o navegador (Chrome/tradutor automático) traduza a página
+    e corrompa os emojis/acentos do menu lateral. Chame ANTES de
+    `exigir_login()`, no topo de cada arquivo — assim cobre até a tela
+    de login, que roda antes de `aplicar_tema()`."""
+    st.markdown(
+        """
+        <script>
+        (function() {
+            var meta = document.createElement('meta');
+            meta.name = 'google';
+            meta.content = 'notranslate';
+            document.head.appendChild(meta);
+            document.documentElement.setAttribute('translate', 'no');
+            document.documentElement.classList.add('notranslate');
+        })();
+        </script>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 def aplicar_tema(usuario=None):
     """Chame logo após `exigir_login()`, no topo de cada página."""
     cor = obter_cor_primaria()

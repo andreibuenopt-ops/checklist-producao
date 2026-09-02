@@ -18,11 +18,12 @@ from src.models import (
 from src.pdf_checklist import gerar_pdf_checklist
 from src.pdf_dashboard import gerar_pdf_dashboard
 from src.turnos import agora_local
-from src.tema import aplicar_tema
+from src.tema import aplicar_tema, desativar_traducao_automatica
 from src.sidebar import mostrar_usuario_logado
 
 st.set_page_config(page_title="Dashboard", page_icon="📊", layout="wide")
 
+desativar_traducao_automatica()
 usuario = exigir_login()
 aplicar_tema(usuario)
 mostrar_usuario_logado(usuario)

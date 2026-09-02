@@ -5,7 +5,7 @@ from src.auth import exigir_login, logout, trocar_senha
 from src.models import buscar_template_por_slug
 from src.preenchimento_ui import renderizar_preenchimento
 from src.sidebar import mostrar_usuario_logado
-from src.tema import aplicar_tema
+from src.tema import aplicar_tema, desativar_traducao_automatica
 
 st.set_page_config(
     page_title="Checklist de Produção",
@@ -14,6 +14,7 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
+desativar_traducao_automatica()
 usuario = exigir_login()
 aplicar_tema(usuario)
 

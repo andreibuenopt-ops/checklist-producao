@@ -11,10 +11,11 @@ from src.auth import exigir_login
 from src.models import buscar_template_por_slug, listar_templates
 from src.preenchimento_ui import renderizar_preenchimento
 from src.sidebar import mostrar_usuario_logado
-from src.tema import aplicar_tema
+from src.tema import aplicar_tema, desativar_traducao_automatica
 
 st.set_page_config(page_title="Preencher Checklist", page_icon="📋", layout="centered")
 
+desativar_traducao_automatica()
 usuario = exigir_login()
 aplicar_tema(usuario)
 mostrar_usuario_logado(usuario)

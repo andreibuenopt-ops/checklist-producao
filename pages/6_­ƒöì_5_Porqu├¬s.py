@@ -27,7 +27,7 @@ from src.models import (
     respostas_nao_criticas_sem_analise,
 )
 from src.pdf_5_porques import gerar_pdf_5_porques
-from src.tema import aplicar_tema
+from src.tema import aplicar_tema, desativar_traducao_automatica
 from src.sidebar import mostrar_usuario_logado
 
 st.set_page_config(page_title="5 Porquês", page_icon="🔍", layout="wide")
@@ -68,6 +68,7 @@ AJUDA_PORQUE = {
     ),
 }
 
+desativar_traducao_automatica()
 usuario = exigir_login()
 aplicar_tema(usuario)
 mostrar_usuario_logado(usuario)

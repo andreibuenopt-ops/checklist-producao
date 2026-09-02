@@ -9,11 +9,12 @@ from src.models import (
     listar_templates,
     rejeitar_sugestao,
 )
-from src.tema import aplicar_tema
+from src.tema import aplicar_tema, desativar_traducao_automatica
 from src.sidebar import mostrar_usuario_logado
 
 st.set_page_config(page_title="Sugestões", page_icon="💡", layout="centered")
 
+desativar_traducao_automatica()
 usuario = exigir_login()
 aplicar_tema(usuario)
 mostrar_usuario_logado(usuario)
