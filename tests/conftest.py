@@ -4,7 +4,14 @@ Cria um .streamlit/secrets.toml falso antes de cada teste — src/db.py lê
 st.secrets assim que é importado (create_client acontece no import), então
 mesmo testes que mockam tudo o resto precisam desse arquivo existir pra a
 importação não quebrar.
+
+Também recarrega src.auth/src.models/src.preenchimento_ui do zero antes
+de cada teste — os "apps de teste" em fixture_apps/ trocam funções desses
+módulos direto (`auth_mod.criar_usuario = fake`), sem usar o monkeypatch
+do pytest, que desfaz sozinho. Sem esse reload, um teste que rodasse
+depois de um fixture app herdaria a versão falsa da função, não a real.
 """
+import importlib
 import sys
 from pathlib import Path
 
@@ -25,3 +32,13 @@ def secrets_fake(monkeypatch, tmp_path):
         'APP_BASE_URL = "https://fake.streamlit.app"\n'
     )
     monkeypatch.chdir(tmp_path)
+
+    for nome_modulo in ("src.auth", "src.models", "src.preenchimento_ui"):
+        if nome_modulo in sys.modules:
+            importlib.reload(sys.modules[nome_modulo])
+
+    yield
+
+    for nome_modulo in ("src.auth", "src.models", "src.preenchimento_ui"):
+        if nome_modulo in sys.modules:
+            importlib.reload(sys.modules[nome_modulo])

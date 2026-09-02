@@ -81,11 +81,15 @@ create policy "app_full_access_logos" on storage.objects
 -- ---------------------------------------------------------------------
 -- USUÁRIOS
 -- Níveis de acesso:
---   master       -> ajuste de sistema, cadastra usuários, cria checklists,
---                   aprova/rejeita sugestões, reseta senha
---   coordenacao  -> visualiza tudo (todas as áreas), sem exportar dashboard
---   supervisor   -> assina checklist, visualiza e EXPORTA dashboard, gera QR
---   producao     -> preenche checklist
+--   master        -> comanda tudo: além do administrador, só ele cria/
+--                    promove/rebaixa outro master, desativa um master,
+--                    e mexe no toggle de aprovação de autocadastro
+--   administrador -> administração do sistema no dia a dia: usuários
+--                    (produção até coordenação), equipamentos, checklists,
+--                    sugestões, identidade visual (logo/cor), QR Codes
+--   coordenacao   -> visualiza tudo (todas as áreas), sem exportar dashboard
+--   supervisor    -> assina checklist, visualiza e EXPORTA dashboard, gera QR
+--   producao      -> preenche checklist
 -- ---------------------------------------------------------------------
 create table if not exists usuarios (
     id                uuid primary key default gen_random_uuid(),
@@ -94,7 +98,7 @@ create table if not exists usuarios (
     matricula         text not null unique,
     senha_hash        text not null,
     papel             text not null default 'producao'
-                      check (papel in ('producao', 'supervisor', 'coordenacao', 'master')),
+                      check (papel in ('producao', 'supervisor', 'coordenacao', 'administrador', 'master')),
     ativo             boolean not null default true,
     senha_temporaria  boolean not null default false,
     criado_por        uuid references usuarios(id),
@@ -104,6 +108,11 @@ create table if not exists usuarios (
 
 create index if not exists idx_usuarios_papel on usuarios (papel);
 create index if not exists idx_usuarios_ativo on usuarios (ativo);
+
+-- Cobre quem já rodou uma versão anterior do schema, sem o papel 'administrador':
+alter table usuarios drop constraint if exists usuarios_papel_check;
+alter table usuarios add constraint usuarios_papel_check
+    check (papel in ('producao', 'supervisor', 'coordenacao', 'administrador', 'master'));
 
 drop trigger if exists trg_usuarios_atualizado_em on usuarios;
 create trigger trg_usuarios_atualizado_em

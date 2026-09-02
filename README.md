@@ -41,12 +41,22 @@ checklist-producao/
 
 ## Níveis de acesso
 
-| Papel | Preenche checklist | Escolhe checklist manualmente | Assina checklist | Vê dashboard | Exporta dashboard | Gera QR Code | Administração |
-|---|---|---|---|---|---|---|---|
-| **producao** | ✅ (só via QR Code) | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| **supervisor** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
-| **coordenacao** | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ❌ |
-| **master** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Papel | Preenche checklist | Escolhe checklist manualmente | Assina checklist | Vê dashboard | Exporta dashboard | Gera QR Code | Administração | Gerencia outro master |
+|---|---|---|---|---|---|---|---|---|
+| **producao** | ✅ (só via QR Code) | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| **supervisor** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ |
+| **coordenacao** | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ❌ | ❌ |
+| **administrador** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
+| **master** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+
+**Administrador** faz a administração do sistema no dia a dia (usuários
+até coordenação, equipamentos, checklists, sugestões, identidade visual),
+mas não cria/promove/rebaixa/desativa/reseta senha de outro **master**,
+nem mexe no toggle de aprovação de autocadastro — isso é exclusivo do
+master, que é quem comanda tudo. A trava existe tanto na interface
+(conta master nem aparece como opção pra quem não é master) quanto na
+função Python por trás (mesmo chamando direto, sem passar pela tela,
+continua bloqueado).
 
 Cada colaborador tem registro próprio: **crachá (matrícula)**, **e-mail da
 empresa** e **senha pessoal**. Na tela de login existe a aba **"🆕 Primeira

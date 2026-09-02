@@ -43,7 +43,7 @@ usuario = exigir_login()
 aplicar_tema()
 mostrar_usuario_logado(usuario)
 if not usuario.pode_gerenciar_sistema:
-    st.error("Acesso restrito ao administrador master.")
+    st.error("Acesso restrito a administrador ou master.")
     st.stop()
 
 st.title("🛠️ Administração")
@@ -55,7 +55,8 @@ NIVEIS = {
     "producao": "Produção — preenche checklists",
     "supervisor": "Supervisor — assina, visualiza e exporta dashboard, gera QR",
     "coordenacao": "Coordenação — visualiza tudo, sem exportar",
-    "master": "Master — acesso total, ajusta o sistema",
+    "administrador": "Administrador — administra o sistema no dia a dia",
+    "master": "Master — comanda tudo, único que mexe em outro master",
 }
 
 # =====================================================================
@@ -120,31 +121,35 @@ with tab_visual:
 # TAB 1 — Usuários
 # =====================================================================
 with tab_usuarios:
-    requer_aprovacao_atual = obter_autocadastro_requer_aprovacao()
-    nova_config_aprovacao = st.toggle(
-        "Autocadastro fica pendente até o master aprovar",
-        value=requer_aprovacao_atual,
-        help=(
-            "Desligado (padrão): quem se cadastra na aba \"Primeira vez aqui?\" "
-            "já entra ativo como Produção. Ligado: a conta é criada mas fica "
-            "inativa até você ativar aqui embaixo."
-        ),
-    )
-    if nova_config_aprovacao != requer_aprovacao_atual:
-        atualizar_autocadastro_requer_aprovacao(nova_config_aprovacao)
-        st.success("Configuração salva.")
-        st.rerun()
+    if usuario.pode_gerenciar_masters:
+        requer_aprovacao_atual = obter_autocadastro_requer_aprovacao()
+        nova_config_aprovacao = st.toggle(
+            "Autocadastro fica pendente até o master aprovar",
+            value=requer_aprovacao_atual,
+            help=(
+                "Desligado (padrão): quem se cadastra na aba \"Primeira vez aqui?\" "
+                "já entra ativo como Produção. Ligado: a conta é criada mas fica "
+                "inativa até você ativar aqui embaixo."
+            ),
+        )
+        if nova_config_aprovacao != requer_aprovacao_atual:
+            atualizar_autocadastro_requer_aprovacao(nova_config_aprovacao)
+            st.success("Configuração salva.")
+            st.rerun()
+        st.divider()
 
-    st.divider()
     st.subheader("Cadastrar usuário")
     st.caption("Cada colaborador tem registro próprio: crachá (matrícula), e-mail da empresa e senha pessoal.")
+    niveis_disponiveis = list(NIVEIS.keys()) if usuario.pode_gerenciar_masters else [
+        p for p in NIVEIS.keys() if p != "master"
+    ]
     with st.form("form_novo_usuario", clear_on_submit=True):
         c1, c2 = st.columns(2)
         nome = c1.text_input("Nome completo")
         email = c2.text_input("E-mail da empresa")
         c3, c4 = st.columns(2)
         matricula = c3.text_input("Número do crachá (matrícula)")
-        papel = c4.selectbox("Nível de acesso", list(NIVEIS.keys()), format_func=lambda p: NIVEIS[p])
+        papel = c4.selectbox("Nível de acesso", niveis_disponiveis, format_func=lambda p: NIVEIS[p])
         senha_inicial = st.text_input("Senha inicial", type="password")
         if st.form_submit_button("Cadastrar", type="primary"):
             if not all([nome, email, matricula, senha_inicial]):
@@ -153,7 +158,7 @@ with tab_usuarios:
                 st.error("Senha muito curta (mínimo 6 caracteres).")
             else:
                 try:
-                    criar_usuario(nome, email, matricula, senha_inicial, papel, usuario.id)
+                    criar_usuario(nome, email, matricula, senha_inicial, papel, usuario.id, quem_cria=usuario)
                     st.success(f"Usuário {nome} cadastrado.")
                     st.rerun()
                 except Exception as e:
@@ -177,29 +182,50 @@ with tab_usuarios:
 
     st.divider()
     mapa_usuarios = {f"{u['nome']} ({u['matricula']})": u["id"] for u in usuarios}
+    mapa_usuarios_papel = {f"{u['nome']} ({u['matricula']})": u["papel"] for u in usuarios}
+
+    # Quem não é master nem vê conta master como alvo — evita erro na
+    # hora de tentar (a função também bloqueia, isso é só a UI não
+    # oferecer o que já sabe que vai falhar).
+    if usuario.pode_gerenciar_masters:
+        alvos_disponiveis = mapa_usuarios
+    else:
+        alvos_disponiveis = {k: v for k, v in mapa_usuarios.items() if mapa_usuarios_papel[k] != "master"}
 
     col_reset, col_status = st.columns(2)
     with col_reset:
         st.subheader("Resetar senha")
-        with st.form("form_reset_senha"):
-            alvo = st.selectbox("Usuário", list(mapa_usuarios.keys()))
-            nova_senha = st.text_input("Nova senha temporária", type="password")
-            if st.form_submit_button("Resetar senha"):
-                if len(nova_senha) < 6:
-                    st.error("Senha muito curta.")
-                else:
-                    resetar_senha(mapa_usuarios[alvo], nova_senha)
-                    st.success(f"Senha de {alvo} resetada. Troca obrigatória no próximo login.")
+        if not alvos_disponiveis:
+            st.caption("Nenhum usuário disponível.")
+        else:
+            with st.form("form_reset_senha"):
+                alvo = st.selectbox("Usuário", list(alvos_disponiveis.keys()))
+                nova_senha = st.text_input("Nova senha temporária", type="password")
+                if st.form_submit_button("Resetar senha"):
+                    if len(nova_senha) < 6:
+                        st.error("Senha muito curta.")
+                    else:
+                        try:
+                            resetar_senha(alvos_disponiveis[alvo], nova_senha, quem_altera=usuario)
+                            st.success(f"Senha de {alvo} resetada. Troca obrigatória no próximo login.")
+                        except ValueError as e:
+                            st.error(str(e))
 
     with col_status:
         st.subheader("Ativar / Desativar")
-        with st.form("form_status_usuario"):
-            alvo2 = st.selectbox("Usuário", list(mapa_usuarios.keys()), key="sel_status")
-            acao = st.radio("Ação", ["Ativar", "Desativar"], horizontal=True)
-            if st.form_submit_button("Aplicar"):
-                alternar_status(mapa_usuarios[alvo2], acao == "Ativar")
-                st.success(f"{alvo2}: {acao.lower()} com sucesso.")
-                st.rerun()
+        if not alvos_disponiveis:
+            st.caption("Nenhum usuário disponível.")
+        else:
+            with st.form("form_status_usuario"):
+                alvo2 = st.selectbox("Usuário", list(alvos_disponiveis.keys()), key="sel_status")
+                acao = st.radio("Ação", ["Ativar", "Desativar"], horizontal=True)
+                if st.form_submit_button("Aplicar"):
+                    try:
+                        alternar_status(alvos_disponiveis[alvo2], acao == "Ativar", quem_altera=usuario)
+                        st.success(f"{alvo2}: {acao.lower()} com sucesso.")
+                        st.rerun()
+                    except ValueError as e:
+                        st.error(str(e))
 
     st.divider()
     st.subheader("Alterar nível de acesso")
@@ -207,22 +233,31 @@ with tab_usuarios:
         "Use aqui pra ajustar quem se autocadastrou (entra sempre como "
         "Produção) — ou pra promover/rebaixar qualquer usuário."
     )
-    mapa_usuarios_papel = {f"{u['nome']} ({u['matricula']})": u["papel"] for u in usuarios}
-    with st.form("form_alterar_papel"):
-        alvo3 = st.selectbox("Usuário", list(mapa_usuarios.keys()), key="sel_papel")
-        papel_atual = mapa_usuarios_papel.get(alvo3, "producao")
-        novo_papel = st.selectbox(
-            "Novo nível", list(NIVEIS.keys()),
-            index=list(NIVEIS.keys()).index(papel_atual),
-            format_func=lambda p: NIVEIS[p],
-        )
-        if st.form_submit_button("Salvar novo nível", type="primary"):
-            if novo_papel == papel_atual:
-                st.info(f"{alvo3} já está como {NIVEIS[novo_papel]}.")
-            else:
-                atualizar_papel_usuario(mapa_usuarios[alvo3], novo_papel)
-                st.success(f"{alvo3} agora é {NIVEIS[novo_papel]}.")
-                st.rerun()
+    if not alvos_disponiveis:
+        st.caption("Nenhum usuário disponível.")
+    else:
+        niveis_disponiveis_alt = list(NIVEIS.keys()) if usuario.pode_gerenciar_masters else [
+            p for p in NIVEIS.keys() if p != "master"
+        ]
+        with st.form("form_alterar_papel"):
+            alvo3 = st.selectbox("Usuário", list(alvos_disponiveis.keys()), key="sel_papel")
+            papel_atual = mapa_usuarios_papel.get(alvo3, "producao")
+            indice_atual = niveis_disponiveis_alt.index(papel_atual) if papel_atual in niveis_disponiveis_alt else 0
+            novo_papel = st.selectbox(
+                "Novo nível", niveis_disponiveis_alt,
+                index=indice_atual,
+                format_func=lambda p: NIVEIS[p],
+            )
+            if st.form_submit_button("Salvar novo nível", type="primary"):
+                if novo_papel == papel_atual:
+                    st.info(f"{alvo3} já está como {NIVEIS[novo_papel]}.")
+                else:
+                    try:
+                        atualizar_papel_usuario(alvos_disponiveis[alvo3], novo_papel, quem_altera=usuario)
+                        st.success(f"{alvo3} agora é {NIVEIS[novo_papel]}.")
+                        st.rerun()
+                    except ValueError as e:
+                        st.error(str(e))
 
 # =====================================================================
 # TAB 2 — Áreas/Equipamentos

@@ -30,22 +30,32 @@ class Usuario:
 
     @property
     def pode_assinar_checklist(self) -> bool:
-        return self.papel in ("supervisor", "coordenacao", "master")
+        return self.papel in ("supervisor", "coordenacao", "administrador", "master")
 
     @property
     def pode_ver_dashboard(self) -> bool:
-        return self.papel in ("supervisor", "coordenacao", "master")
+        return self.papel in ("supervisor", "coordenacao", "administrador", "master")
 
     @property
     def pode_exportar_dashboard(self) -> bool:
-        return self.papel in ("supervisor", "master")
+        return self.papel in ("supervisor", "administrador", "master")
 
     @property
     def pode_gerar_qrcodes(self) -> bool:
-        return self.papel in ("supervisor", "coordenacao", "master")
+        return self.papel in ("supervisor", "coordenacao", "administrador", "master")
 
     @property
     def pode_gerenciar_sistema(self) -> bool:
+        """Libera a página de Administração. Master e administrador —
+        o que muda entre os dois é pode_gerenciar_masters, abaixo."""
+        return self.papel in ("administrador", "master")
+
+    @property
+    def pode_gerenciar_masters(self) -> bool:
+        """Só o master mexe em quem é master — criar, promover, rebaixar
+        ou desativar — e no toggle de aprovação de autocadastro. Evita
+        que um administrador (mesmo de confiança) tranque o dono do
+        sistema pra fora ou crie um "chefe" igual a si mesmo."""
         return self.papel == "master"
 
     @property
@@ -53,7 +63,7 @@ class Usuario:
         """Produção só preenche via QR Code fixo na área — sem escolher
         manualmente qual checklist abrir. Os demais papéis podem, para
         verificação/teste/administração."""
-        return self.papel in ("supervisor", "coordenacao", "master")
+        return self.papel in ("supervisor", "coordenacao", "administrador", "master")
 
 
 def _usuario_from_row(row: dict) -> Usuario:
@@ -173,9 +183,17 @@ def logout():
     st.session_state.pop("usuario", None)
 
 
-def criar_usuario(nome: str, email: str, matricula: str, senha: str, papel: str, criado_por_id: str, ativo: bool = True):
-    if papel not in ("producao", "supervisor", "coordenacao", "master"):
+PAPEIS_VALIDOS = ("producao", "supervisor", "coordenacao", "administrador", "master")
+
+
+def criar_usuario(
+    nome: str, email: str, matricula: str, senha: str, papel: str, criado_por_id: str,
+    ativo: bool = True, quem_cria=None,
+):
+    if papel not in PAPEIS_VALIDOS:
         raise ValueError("Papel inválido.")
+    if papel == "master" and not (quem_cria and quem_cria.pode_gerenciar_masters):
+        raise ValueError("Só o master pode criar outro usuário master.")
     senha_hash = bcrypt.hashpw(senha.encode(), bcrypt.gensalt()).decode()
     return (
         supabase.table("usuarios")
@@ -187,18 +205,22 @@ def criar_usuario(nome: str, email: str, matricula: str, senha: str, papel: str,
             "papel": papel,
             "criado_por": criado_por_id,
             "ativo": ativo,
-        })
+        }, returning="minimal")
         .execute()
     )
 
 
-def resetar_senha(usuario_id: str, nova_senha_temporaria: str):
+def resetar_senha(usuario_id: str, nova_senha_temporaria: str, quem_altera=None):
     """Master reseta a senha; o usuário é obrigado a trocá-la no próximo login."""
+    if not (quem_altera and quem_altera.pode_gerenciar_masters):
+        alvo = supabase.table("usuarios").select("papel").eq("id", usuario_id).limit(1).execute()
+        if alvo.data and alvo.data[0]["papel"] == "master":
+            raise ValueError("Só o master pode resetar a senha de outro usuário master.")
     senha_hash = bcrypt.hashpw(nova_senha_temporaria.encode(), bcrypt.gensalt()).decode()
     supabase.table("usuarios").update({
         "senha_hash": senha_hash,
         "senha_temporaria": True,
-    }).eq("id", usuario_id).execute()
+    }, returning="minimal").eq("id", usuario_id).execute()
 
 
 def trocar_senha(usuario_id: str, nova_senha: str):
@@ -206,20 +228,32 @@ def trocar_senha(usuario_id: str, nova_senha: str):
     supabase.table("usuarios").update({
         "senha_hash": senha_hash,
         "senha_temporaria": False,
-    }).eq("id", usuario_id).execute()
+    }, returning="minimal").eq("id", usuario_id).execute()
     if "usuario" in st.session_state:
         st.session_state["usuario"].senha_temporaria = False
 
 
-def alternar_status(usuario_id: str, ativo: bool):
-    supabase.table("usuarios").update({"ativo": ativo}).eq("id", usuario_id).execute()
+def alternar_status(usuario_id: str, ativo: bool, quem_altera=None):
+    if not ativo and not (quem_altera and quem_altera.pode_gerenciar_masters):
+        alvo = supabase.table("usuarios").select("papel").eq("id", usuario_id).limit(1).execute()
+        if alvo.data and alvo.data[0]["papel"] == "master":
+            raise ValueError("Só o master pode desativar outro usuário master.")
+    supabase.table("usuarios").update({"ativo": ativo}, returning="minimal").eq("id", usuario_id).execute()
 
 
-def atualizar_papel_usuario(usuario_id: str, novo_papel: str):
-    """Usado pelo master pra promover/rebaixar alguém — em especial quem
-    se autocadastrou (sempre entra como 'producao')."""
-    if novo_papel not in ("producao", "supervisor", "coordenacao", "master"):
+def atualizar_papel_usuario(usuario_id: str, novo_papel: str, quem_altera=None):
+    """Usado pra promover/rebaixar alguém — em especial quem se
+    autocadastrou (sempre entra como 'producao'). Só o master mexe em
+    quem já é master, ou promove alguém a master."""
+    if novo_papel not in PAPEIS_VALIDOS:
         raise ValueError("Papel inválido.")
-    supabase.table("usuarios").update({"papel": novo_papel}).eq("id", usuario_id).execute()
+    pode_masters = bool(quem_altera and quem_altera.pode_gerenciar_masters)
+    if novo_papel == "master" and not pode_masters:
+        raise ValueError("Só o master pode promover alguém a master.")
+    if not pode_masters:
+        alvo = supabase.table("usuarios").select("papel").eq("id", usuario_id).limit(1).execute()
+        if alvo.data and alvo.data[0]["papel"] == "master":
+            raise ValueError("Só o master pode alterar o nível de outro usuário master.")
+    supabase.table("usuarios").update({"papel": novo_papel}, returning="minimal").eq("id", usuario_id).execute()
     if st.session_state.get("usuario") and st.session_state["usuario"].id == usuario_id:
         st.session_state["usuario"].papel = novo_papel

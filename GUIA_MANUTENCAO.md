@@ -288,6 +288,23 @@ usada pra construir e validar esse projeto do início. Os arquivos
 `tests/fixture_apps/`, seguindo o padrão dos existentes — mocka só o que
 esse fluxo específico usa, não precisa mockar tudo.
 
+**Nem todo teste precisa de fixture app/`AppTest`** — `test_hierarquia_admin.py`
+testa direto as funções de `src/auth.py` (sem simular tela nenhuma),
+usando uma fixture `auth_mod` que importa o módulo só *depois* de
+`secrets_fake` já ter rodado (se importasse no topo do arquivo, quebra —
+`src/db.py` lê `st.secrets` na hora da importação, antes de qualquer
+fixture rodar). Segue esse padrão pra testar lógica de permissão sem
+precisar renderizar página nenhuma.
+
+⚠️ **Cuidado com poluição entre arquivos de teste**: os fixture apps
+trocam função de módulo direto (`auth_mod.criar_usuario = fake`), sem
+usar o `monkeypatch` do pytest — que desfaz sozinho depois do teste. Sem
+cuidado, um teste que roda depois herdaria a versão falsa de outro
+arquivo. `conftest.py` já resolve isso recarregando `src.auth`/
+`src.models`/`src.preenchimento_ui` do zero antes de cada teste — se
+criar um fixture app novo que mockar outro módulo, adiciona o nome dele
+na lista de `for nome_modulo in (...)` no `conftest.py`.
+
 **O que a suite NÃO cobre**: integração real contra Supabase/Streamlit
 Cloud — tudo aqui é com banco falso em memória. Não substitui testar no
 ambiente real depois de uma mudança grande.
