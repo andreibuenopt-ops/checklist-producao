@@ -21,6 +21,8 @@ from reportlab.platypus import (
     TableStyle,
 )
 
+from src.pdf_utils import texto_seguro
+
 LARGURA_UTIL = 170 * mm  # A4 (210mm) menos 20mm de margem total
 
 
@@ -98,7 +100,8 @@ def gerar_pdf_5_porques(analise: dict, acoes: list[dict], logo_bytes: bytes | No
     elementos.append(Spacer(1, 4 * mm))
 
     elementos.append(Paragraph("Descrição do Problema — o que ocorreu:", cabecalho_titulo_style))
-    elementos.append(Paragraph((analise.get("descricao_problema") or "-").replace("\n", "<br/>"), normal))
+    descricao_limpa = texto_seguro(analise.get("descricao_problema")) or "-"
+    elementos.append(Paragraph(descricao_limpa.replace("\n", "<br/>"), normal))
     elementos.append(Spacer(1, 5 * mm))
 
     perguntas_porque = {
@@ -116,7 +119,7 @@ def gerar_pdf_5_porques(analise: dict, acoes: list[dict], logo_bytes: bytes | No
     linhas_porque = [["Etapa", "Pergunta", "Resposta"]]
     for chave, pergunta in perguntas_porque.items():
         linhas_porque.append([
-            etiquetas_etapa[chave], pergunta, Paragraph(analise.get(chave) or "", normal),
+            etiquetas_etapa[chave], pergunta, Paragraph(texto_seguro(analise.get(chave)) or "", normal),
         ])
 
     tabela_porques = Table(linhas_porque, colWidths=[22 * mm, 43 * mm, LARGURA_UTIL - 65 * mm], repeatRows=1)
@@ -132,15 +135,15 @@ def gerar_pdf_5_porques(analise: dict, acoes: list[dict], logo_bytes: bytes | No
     elementos.append(Spacer(1, 5 * mm))
 
     elementos.append(Paragraph("Causa Raiz Identificada", cabecalho_titulo_style))
-    elementos.append(Paragraph(analise.get("causa_raiz") or "-", normal))
+    elementos.append(Paragraph(texto_seguro(analise.get("causa_raiz")) or "-", normal))
     elementos.append(Spacer(1, 5 * mm))
 
     elementos.append(Paragraph("Plano de Ação", cabecalho_titulo_style))
     linhas_acoes = [["Ação Corretiva", "Responsável", "Prazo"]]
     for acao in acoes:
         linhas_acoes.append([
-            Paragraph(acao.get("acao_corretiva") or "", normal),
-            acao.get("responsavel") or "",
+            Paragraph(texto_seguro(acao.get("acao_corretiva")) or "", normal),
+            texto_seguro(acao.get("responsavel")) or "",
             _formatar_data(acao.get("prazo")) if acao.get("prazo") else "",
         ])
     while len(linhas_acoes) - 1 < 5:  # completa com linhas em branco, igual ao papel
@@ -167,7 +170,7 @@ def gerar_pdf_5_porques(analise: dict, acoes: list[dict], logo_bytes: bytes | No
         normal,
     ))
     elementos.append(Spacer(1, 3 * mm))
-    elementos.append(Paragraph(f"<b>Evidências:</b> {analise.get('evidencias') or ''}", normal))
+    elementos.append(Paragraph(f"<b>Evidências:</b> {texto_seguro(analise.get('evidencias')) or ''}", normal))
     elementos.append(Spacer(1, 6 * mm))
 
     elementos.append(Paragraph(

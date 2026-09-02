@@ -7,7 +7,16 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from src.auth import exigir_login
-from src.models import checklists_do_dia, listar_templates, nomes_usuarios, respostas_por_data
+from src.models import (
+    checklists_do_dia,
+    listar_templates,
+    nomes_usuarios,
+    obter_checklist_completo,
+    obter_logo_bytes_com_fallback,
+    respostas_por_data,
+)
+from src.pdf_checklist import gerar_pdf_checklist
+from src.pdf_dashboard import gerar_pdf_dashboard
 from src.turnos import agora_local
 from src.tema import aplicar_tema
 from src.sidebar import mostrar_usuario_logado
@@ -111,18 +120,64 @@ else:
     ]
     st.dataframe(pd.DataFrame(linhas), use_container_width=True, hide_index=True)
 
-# Exportação — apenas supervisor e master
+# Exportação — apenas supervisor, administrador e master
 if usuario.pode_exportar_dashboard and linhas:
+    col_csv, col_pdf_dash = st.columns(2)
+
     csv_buf = io.StringIO()
     pd.DataFrame(linhas).to_csv(csv_buf, index=False)
-    st.download_button(
+    col_csv.download_button(
         "⬇️ Exportar CSV",
         data=csv_buf.getvalue(),
         file_name=f"checklists_{data_ref.isoformat()}.csv",
         mime="text/csv",
+        use_container_width=True,
+    )
+
+    pdf_dashboard = gerar_pdf_dashboard(
+        data_ref, area_escolhida,
+        cards={
+            "esperados": esperados, "completos": completos, "nao_iniciados": nao_iniciados,
+            "conformidade": conformidade, "pendencias_sem_comentario": pendencias_sem_comentario,
+            "criticas_nao": criticas_nao,
+        },
+        linhas=linhas,
+        contagem_resp=dict(contagem_resp),
+        top_perguntas_nao=list(Counter(
+            r["checklist_template_itens"]["pergunta"] for r in respostas if r["resposta"] == "Não"
+        ).most_common(10)),
+        logo_bytes=obter_logo_bytes_com_fallback(),
+    )
+    col_pdf_dash.download_button(
+        "⬇️ Exportar PDF (resumo)",
+        data=pdf_dashboard,
+        file_name=f"dashboard_{data_ref.isoformat()}.pdf",
+        mime="application/pdf",
+        use_container_width=True,
     )
 elif not usuario.pode_exportar_dashboard:
-    st.caption("Exportação disponível apenas para supervisores e master.")
+    st.caption("Exportação disponível apenas para supervisores, administradores e master.")
+
+# Exportar um checklist específico em PDF (com todas as respostas)
+if checklists:
+    st.divider()
+    st.subheader("Exportar um checklist específico")
+    ICONE_STATUS = {"completo": "✅", "em_andamento": "🟡", "pendente": "⚪"}
+    mapa_checklists = {
+        f"{c['checklist_templates']['titulo']} · {c['turnos']['nome']} · {ICONE_STATUS[c['status']]}": c["id"]
+        for c in checklists
+    }
+    checklist_escolhido = st.selectbox("Checklist", list(mapa_checklists.keys()))
+    if st.button("Gerar PDF do checklist selecionado"):
+        dados_completos = obter_checklist_completo(mapa_checklists[checklist_escolhido])
+        if dados_completos:
+            pdf_bytes = gerar_pdf_checklist(dados_completos, obter_logo_bytes_com_fallback())
+            st.download_button(
+                "⬇️ Baixar PDF do checklist",
+                data=pdf_bytes,
+                file_name=f"checklist_{mapa_checklists[checklist_escolhido]}.pdf",
+                mime="application/pdf",
+            )
 
 st.divider()
 

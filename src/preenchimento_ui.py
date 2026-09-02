@@ -33,9 +33,12 @@ from src.models import (
     listar_itens,
     listar_respostas,
     nomes_usuarios,
+    obter_checklist_completo,
+    obter_logo_bytes_com_fallback,
     obter_ou_criar_checklist,
     salvar_respostas_em_lote,
 )
+from src.pdf_checklist import gerar_pdf_checklist
 from src.turnos import turno_e_data_referencia
 
 
@@ -61,6 +64,16 @@ def renderizar_preenchimento(usuario, template: dict):
         col1, col2 = st.columns(2)
         col1.metric("Colaborador", nomes.get(checklist.get("colaborador_id"), "-"))
         col2.metric("Assinado por", nomes.get(checklist.get("supervisor_id"), "-"))
+
+        dados_completos = obter_checklist_completo(checklist["id"])
+        if dados_completos:
+            pdf_bytes = gerar_pdf_checklist(dados_completos, obter_logo_bytes_com_fallback())
+            st.download_button(
+                "⬇️ Exportar PDF deste checklist",
+                data=pdf_bytes,
+                file_name=f"checklist_{checklist['id']}.pdf",
+                mime="application/pdf",
+            )
         return
 
     itens = listar_itens(template["id"])

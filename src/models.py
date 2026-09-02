@@ -297,6 +297,44 @@ def checklists_do_dia(data_ref: date):
     return res.data
 
 
+def obter_checklist_completo(checklist_id: str) -> dict | None:
+    """Monta o pacote inteiro de um checklist (dados + itens + horários +
+    respostas + nomes de quem preencheu/assinou) pronto pra exportação
+    em PDF — evita a página de relatório ter que orquestrar 6 chamadas
+    separadas."""
+    checklist = buscar_checklist(checklist_id)
+    if not checklist:
+        return None
+
+    res_template = (
+        supabase.table("checklist_templates")
+        .select("titulo, area, codigo, id")
+        .eq("id", checklist["template_id"])
+        .limit(1)
+        .execute()
+    )
+    template = res_template.data[0] if res_template.data else {}
+
+    res_turno = supabase.table("turnos").select("nome").eq("id", checklist["turno_id"]).limit(1).execute()
+    turno_nome = res_turno.data[0]["nome"] if res_turno.data else "-"
+
+    itens = listar_itens(checklist["template_id"])
+    horarios = listar_horarios(checklist["template_id"], checklist["turno_id"])
+    respostas = listar_respostas(checklist_id)
+    nomes = nomes_usuarios((checklist.get("colaborador_id"), checklist.get("supervisor_id")))
+
+    return {
+        "checklist": checklist,
+        "template": template,
+        "turno_nome": turno_nome,
+        "itens": itens,
+        "horarios": horarios,
+        "respostas": respostas,
+        "colaborador_nome": nomes.get(checklist.get("colaborador_id"), "-"),
+        "supervisor_nome": nomes.get(checklist.get("supervisor_id"), "-"),
+    }
+
+
 def respostas_por_data(data_ref: date):
     res = (
         supabase.table("checklist_respostas")

@@ -74,6 +74,27 @@ def _fake_concluir_checklist(*a, **k):
     pass
 
 
+def _fake_obter_checklist_completo(checklist_id):
+    return {
+        "checklist": _fake_buscar_checklist(checklist_id),
+        "template": {"titulo": "Checklist Teste", "area": "Área Teste", "codigo": "COD001"},
+        "turno_nome": "Manhã",
+        "itens": _fake_listar_itens("template-1"),
+        "horarios": _fake_listar_horarios("template-1", 1),
+        "respostas": {},
+        "colaborador_nome": "Colaborador Teste",
+        "supervisor_nome": "Supervisor Teste",
+    }
+
+
+def _fake_obter_logo_bytes_com_fallback():
+    return None
+
+
+def _fake_gerar_pdf_checklist(dados, logo_bytes=None):
+    return b"%PDF-fake-content"
+
+
 pui.turno_e_data_referencia = _fake_turno_e_data_referencia
 pui.obter_ou_criar_checklist = _fake_obter_ou_criar_checklist
 pui.definir_colaborador = _fake_definir_colaborador
@@ -85,6 +106,9 @@ pui.salvar_respostas_em_lote = _fake_salvar_respostas_em_lote
 pui.nomes_usuarios = _fake_nomes_usuarios
 pui.autenticar = _fake_autenticar
 pui.concluir_checklist = _fake_concluir_checklist
+pui.obter_checklist_completo = _fake_obter_checklist_completo
+pui.obter_logo_bytes_com_fallback = _fake_obter_logo_bytes_com_fallback
+pui.gerar_pdf_checklist = _fake_gerar_pdf_checklist
 
 usuario_fake = SimpleNamespace(id="u1", nome="Teste", papel="producao", pode_assinar_checklist=False)
 template_fake = {"id": "template-1", "area": "Área Teste", "codigo": "COD001"}

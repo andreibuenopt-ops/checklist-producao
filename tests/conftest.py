@@ -33,12 +33,12 @@ def secrets_fake(monkeypatch, tmp_path):
     )
     monkeypatch.chdir(tmp_path)
 
-    for nome_modulo in ("src.auth", "src.models", "src.preenchimento_ui"):
+    for nome_modulo in ("src.auth", "src.models", "src.preenchimento_ui", "src.pdf_checklist", "src.pdf_dashboard"):
         if nome_modulo in sys.modules:
             importlib.reload(sys.modules[nome_modulo])
 
     yield
 
-    for nome_modulo in ("src.auth", "src.models", "src.preenchimento_ui"):
+    for nome_modulo in ("src.auth", "src.models", "src.preenchimento_ui", "src.pdf_checklist", "src.pdf_dashboard"):
         if nome_modulo in sys.modules:
             importlib.reload(sys.modules[nome_modulo])
