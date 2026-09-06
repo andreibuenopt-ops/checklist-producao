@@ -81,7 +81,7 @@ def buscar_template_por_slug(slug: str):
 
 def criar_template(
     codigo: str, titulo: str, setor_id: int, revisao: str = "", observacao: str = "",
-    equipamento_id: str | None = None,
+    equipamento_id: str | None = None, tipo_area: str = "interno",
 ):
     setor = next(s for s in listar_setores() if s["id"] == setor_id)
     area = setor["nome"]
@@ -96,6 +96,7 @@ def criar_template(
         "slug": _slugify(titulo),
         "setor_id": setor_id,
         "equipamento_id": equipamento_id,
+        "tipo_area": tipo_area,
         "ordem_processo": setor["ordem"] * 10,
         "revisao": revisao,
         "observacao": observacao,
@@ -125,11 +126,14 @@ def listar_itens(template_id: str):
     )
 
 
-def adicionar_itens(template_id: str, perguntas: list[str], criticidade: str = "media"):
+def adicionar_itens(template_id: str, perguntas: list[str], criticidade: str = "media", tipo_resposta: str = "sim_nao"):
     itens_atuais = listar_itens(template_id)
     proxima_ordem = max((i["ordem"] for i in itens_atuais), default=0)
     payload = [
-        {"template_id": template_id, "ordem": proxima_ordem + i, "pergunta": p, "criticidade": criticidade}
+        {
+            "template_id": template_id, "ordem": proxima_ordem + i, "pergunta": p,
+            "criticidade": criticidade, "tipo_resposta": tipo_resposta,
+        }
         for i, p in enumerate((p.strip() for p in perguntas if p.strip()), start=1)
     ]
     if payload:
@@ -140,10 +144,11 @@ def remover_item(item_id: str):
     supabase.table("checklist_template_itens").delete().eq("id", item_id).execute()
 
 
-def editar_item(item_id: str, pergunta: str, criticidade: str):
+def editar_item(item_id: str, pergunta: str, criticidade: str, tipo_resposta: str = "sim_nao"):
     supabase.table("checklist_template_itens").update({
         "pergunta": pergunta.strip(),
         "criticidade": criticidade,
+        "tipo_resposta": tipo_resposta,
     }).eq("id", item_id).execute()
 
 
@@ -247,21 +252,33 @@ def concluir_checklist(checklist_id: str, supervisor_id: str, comentario: str):
 # Respostas
 # =====================================================================
 def listar_respostas(checklist_id: str) -> dict:
+    """Retorna {(item_id, horario_id): {"resposta": ..., "observacao": ...}}.
+
+    "observacao" é o relato específico daquele item (preenchido quando a
+    resposta é "Não") — diferente do campo "comentario" geral do checklist.
+    """
     res = (
         supabase.table("checklist_respostas")
-        .select("item_id, horario_id, resposta")
+        .select("item_id, horario_id, resposta, observacao")
         .eq("checklist_id", checklist_id)
         .execute()
     )
-    return {(r["item_id"], r["horario_id"]): r["resposta"] for r in res.data}
+    return {
+        (r["item_id"], r["horario_id"]): {
+            "resposta": r["resposta"],
+            "observacao": r.get("observacao") or "",
+        }
+        for r in res.data
+    }
 
 
-def salvar_resposta(checklist_id: str, item_id: str, horario_id: str, resposta: str, usuario_id: str):
+def salvar_resposta(checklist_id: str, item_id: str, horario_id: str, resposta: str, usuario_id: str, observacao: str = ""):
     supabase.table("checklist_respostas").upsert({
         "checklist_id": checklist_id,
         "item_id": item_id,
         "horario_id": horario_id,
         "resposta": resposta,
+        "observacao": observacao or "",
         "respondido_por": usuario_id,
         "respondido_em": "now()",
     }, on_conflict="checklist_id,item_id,horario_id").execute()
@@ -285,12 +302,37 @@ def salvar_respostas_em_lote(respostas: list[dict]) -> int:
 
 
 # =====================================================================
+# Justificativa de atraso (ronda concluída com >1h de atraso)
+# =====================================================================
+def listar_justificativas_atraso(checklist_id: str) -> dict:
+    """Retorna {horario_id: justificativa} das rondas atrasadas já
+    justificadas nesse checklist."""
+    res = (
+        supabase.table("checklist_justificativas_atraso")
+        .select("horario_id, justificativa")
+        .eq("checklist_id", checklist_id)
+        .execute()
+    )
+    return {r["horario_id"]: r["justificativa"] for r in res.data}
+
+
+def salvar_justificativa_atraso(checklist_id: str, horario_id: str, justificativa: str, usuario_id: str):
+    supabase.table("checklist_justificativas_atraso").upsert({
+        "checklist_id": checklist_id,
+        "horario_id": horario_id,
+        "justificativa": justificativa,
+        "registrado_por": usuario_id,
+        "registrado_em": "now()",
+    }, on_conflict="checklist_id,horario_id").execute()
+
+
+# =====================================================================
 # Dashboard
 # =====================================================================
 def checklists_do_dia(data_ref: date):
     res = (
         supabase.table("checklists")
-        .select("*, checklist_templates(titulo, area, codigo), turnos(nome)")
+        .select("*, checklist_templates(titulo, area, codigo, tipo_area), turnos(nome)")
         .eq("data", data_ref.isoformat())
         .execute()
     )
@@ -321,6 +363,7 @@ def obter_checklist_completo(checklist_id: str) -> dict | None:
     itens = listar_itens(checklist["template_id"])
     horarios = listar_horarios(checklist["template_id"], checklist["turno_id"])
     respostas = listar_respostas(checklist_id)
+    justificativas_atraso = listar_justificativas_atraso(checklist_id)
     nomes = nomes_usuarios((checklist.get("colaborador_id"), checklist.get("supervisor_id")))
 
     return {
@@ -330,6 +373,7 @@ def obter_checklist_completo(checklist_id: str) -> dict | None:
         "itens": itens,
         "horarios": horarios,
         "respostas": respostas,
+        "justificativas_atraso": justificativas_atraso,
         "colaborador_nome": nomes.get(checklist.get("colaborador_id"), "-"),
         "supervisor_nome": nomes.get(checklist.get("supervisor_id"), "-"),
     }

@@ -20,6 +20,7 @@ from src.models import obter_cor_primaria
 _POSICAO_DASHBOARD = 3
 _POSICAO_QRCODES = 4
 _POSICAO_ADMINISTRACAO = 5
+_POSICAO_5_PORQUES = 7
 
 
 def _css_ocultar_paginas(usuario) -> str:
@@ -33,6 +34,8 @@ def _css_ocultar_paginas(usuario) -> str:
         ocultar.append(_POSICAO_QRCODES)
     if not usuario.pode_gerenciar_sistema:
         ocultar.append(_POSICAO_ADMINISTRACAO)
+    if not usuario.pode_abrir_5_porques:
+        ocultar.append(_POSICAO_5_PORQUES)
     if not ocultar:
         return ""
     seletores = ", ".join(

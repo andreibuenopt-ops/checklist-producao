@@ -33,6 +33,13 @@ class Usuario:
         return self.papel in ("supervisor", "coordenacao", "administrador", "master")
 
     @property
+    def pode_concluir_proprio_checklist(self) -> bool:
+        """Produção pode concluir sozinha o checklist que ela mesma
+        preencheu — sem precisar de login separado de um supervisor.
+        Usa a própria sessão já autenticada como assinatura."""
+        return self.papel == "producao"
+
+    @property
     def pode_ver_dashboard(self) -> bool:
         return self.papel in ("supervisor", "coordenacao", "administrador", "master")
 
@@ -43,6 +50,14 @@ class Usuario:
     @property
     def pode_gerar_qrcodes(self) -> bool:
         return self.papel in ("supervisor", "coordenacao", "administrador", "master")
+
+    @property
+    def pode_abrir_5_porques(self) -> bool:
+        """Análise 5 Porquês (RCA) só é aberta a critério da coordenação —
+        produção e supervisor não decidem sozinhos abrir uma investigação
+        formal de causa raiz. O 'Não' já fica registrado (item + descritivo)
+        no PDF do checklist independente disso."""
+        return self.papel in ("coordenacao", "administrador", "master")
 
     @property
     def pode_gerenciar_sistema(self) -> bool:
