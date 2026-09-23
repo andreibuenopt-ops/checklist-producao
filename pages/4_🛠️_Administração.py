@@ -14,6 +14,7 @@ from src.models import (
     criar_equipamento,
     criar_template,
     definir_horarios_turnos,
+    atualizar_nome_exibicao,
     desativar_template,
     editar_horario,
     editar_item,
@@ -406,6 +407,28 @@ with tab_checklists:
         with st.expander(f"{'🟢' if t['ativo'] else '⚪'} {t['titulo']} · {rotulo_area}"):
             selo_area = "🏭 Interno" if t.get("tipo_area", "interno") == "interno" else "🌳 Externo"
             st.caption(f"{t['codigo']} · slug: {t['slug']} · {selo_area}")
+
+            # -----------------------------------------------------------
+            # Nome de exibição (aparece no QR/etiqueta/cartaz) — editável
+            # livremente, sem afetar o setor formal (que continua
+            # controlando o agrupamento em todo o resto do sistema).
+            # -----------------------------------------------------------
+            with st.form(f"form_nome_qr_{t['id']}"):
+                novo_nome_qr = st.text_input(
+                    "Nome de exibição no QR / etiqueta / cartaz",
+                    value=t["area"],
+                    help=f"Setor: {setor_nome} (isso aqui não muda — é só o rótulo mostrado no QR, ex: \"{t['titulo']}\").",
+                    key=f"nome_qr_{t['id']}",
+                )
+                if st.form_submit_button("Salvar nome do QR"):
+                    if novo_nome_qr.strip():
+                        atualizar_nome_exibicao(t["id"], novo_nome_qr)
+                        st.success("Nome atualizado.")
+                        st.rerun()
+                    else:
+                        st.error("O nome não pode ficar vazio.")
+
+            st.divider()
 
             # -----------------------------------------------------------
             # Horários de checagem por turno — editável

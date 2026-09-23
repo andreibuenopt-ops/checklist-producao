@@ -112,6 +112,14 @@ def reativar_template(template_id: str):
     supabase.table("checklist_templates").update({"ativo": True}).eq("id", template_id).execute()
 
 
+def atualizar_nome_exibicao(template_id: str, area: str):
+    """Nome que aparece no QR (etiqueta/cartaz) e na "Área" do checklist —
+    independente do setor formal (setor_id), que continua controlando o
+    agrupamento por processo em todo o resto do sistema. Editar aqui NÃO
+    reclassifica o checklist, só troca o rótulo mostrado."""
+    supabase.table("checklist_templates").update({"area": area.strip()}).eq("id", template_id).execute()
+
+
 # =====================================================================
 # Itens de inspeção
 # =====================================================================
