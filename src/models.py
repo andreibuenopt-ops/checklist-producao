@@ -25,6 +25,16 @@ def listar_setores():
     return supabase.table("setores_processo").select("*").order("ordem").execute().data
 
 
+def editar_setor_nome(setor_id: int, nome: str):
+    """Renomeia o setor/processo formal — usado como cabeçalho de
+    agrupamento em Gerar QRCodes, Preencher Checklist (seleção manual) e
+    Dashboard. Diferente de atualizar_nome_exibicao(): isso muda o nome
+    em TODO o sistema, não só a etiqueta de um checklist específico.
+    Só faz sentido quando o setor tem pouco (ou nenhum) outro checklist
+    dividindo o mesmo agrupamento."""
+    supabase.table("setores_processo").update({"nome": nome.strip()}).eq("id", setor_id).execute()
+
+
 def listar_turnos():
     return supabase.table("turnos").select("*").order("ordem").execute().data
 
