@@ -1,5 +1,4 @@
 """Painel do administrador master: usuários e checklists."""
-from collections import Counter
 from datetime import time
 
 import streamlit as st
@@ -19,7 +18,6 @@ from src.models import (
     desativar_template,
     editar_horario,
     editar_item,
-    editar_setor_nome,
     listar_equipamentos,
     listar_horarios_todos_turnos,
     listar_itens,
@@ -402,7 +400,6 @@ with tab_checklists:
     CRITICIDADES = ["media", "alta", "critica"]
 
     templates = listar_templates(apenas_ativos=False)
-    contagem_setor = Counter(t["setor_id"] for t in templates if t.get("setor_id"))
     for t in templates:
         setor_nome = (t.get("setores_processo") or {}).get("nome", "—")
         equipamento_nome = (t.get("equipamentos") or {}).get("nome")
@@ -427,32 +424,6 @@ with tab_checklists:
                     if novo_nome_qr.strip():
                         atualizar_nome_exibicao(t["id"], novo_nome_qr)
                         st.success("Nome atualizado.")
-                        st.rerun()
-                    else:
-                        st.error("O nome não pode ficar vazio.")
-
-            # -----------------------------------------------------------
-            # Nome do SETOR/processo formal — isso é diferente do campo
-            # acima: muda o cabeçalho de agrupamento em TODO o sistema
-            # (Gerar QRCodes, Preencher Checklist manual, Dashboard),
-            # não só a etiqueta deste checklist.
-            # -----------------------------------------------------------
-            outros_no_setor = contagem_setor.get(t.get("setor_id"), 1) - 1
-            with st.form(f"form_nome_setor_{t['id']}"):
-                if outros_no_setor > 0:
-                    st.caption(
-                        f"⚠️ Esse setor agrupa mais {outros_no_setor} checklist(s) além deste — "
-                        "renomear aqui muda o cabeçalho pra todos eles também."
-                    )
-                novo_nome_setor = st.text_input(
-                    "Nome do setor/processo (cabeçalho usado em todo o sistema)",
-                    value=setor_nome,
-                    key=f"nome_setor_{t['id']}",
-                )
-                if st.form_submit_button("Salvar nome do setor"):
-                    if novo_nome_setor.strip():
-                        editar_setor_nome(t["setor_id"], novo_nome_setor)
-                        st.success("Setor renomeado.")
                         st.rerun()
                     else:
                         st.error("O nome não pode ficar vazio.")

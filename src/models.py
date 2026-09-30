@@ -212,6 +212,36 @@ def remover_horario(horario_id: str):
     supabase.table("checklist_template_horarios").delete().eq("id", horario_id).execute()
 
 
+MAX_HORARIOS_POR_TURNO = 6
+
+
+def adicionar_horario(template_id: str, turno_id: int, horario: str) -> str | None:
+    """Adiciona mais uma ronda (horário) num turno já existente do
+    checklist. Devolve uma mensagem de erro (string) se não der — None
+    se deu certo. Limite de MAX_HORARIOS_POR_TURNO por turno."""
+    existentes = (
+        supabase.table("checklist_template_horarios")
+        .select("id, ordem")
+        .eq("template_id", template_id)
+        .eq("turno_id", turno_id)
+        .execute()
+        .data
+    )
+    if len(existentes) >= MAX_HORARIOS_POR_TURNO:
+        return f"Esse turno já tem o máximo de {MAX_HORARIOS_POR_TURNO} horários."
+    proxima_ordem = max((e["ordem"] for e in existentes), default=0) + 1
+    try:
+        supabase.table("checklist_template_horarios").insert({
+            "template_id": template_id, "turno_id": turno_id,
+            "horario": horario, "ordem": proxima_ordem,
+        }).execute()
+    except Exception as e:
+        if "duplicate" in str(e).lower() or "unique" in str(e).lower():
+            return "Esse turno já tem uma ronda nesse mesmo horário."
+        raise
+    return None
+
+
 def editar_horario(horario_id: str, novo_horario: str):
     supabase.table("checklist_template_horarios").update({
         "horario": novo_horario,
