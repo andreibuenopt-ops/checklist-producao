@@ -28,7 +28,7 @@ def _fake_turno_e_data_referencia():
 
 
 def _fake_obter_ou_criar_checklist(template_id, turno_id, data_referencia):
-    return {"id": "checklist-1", "status": STATUS_CHECKLIST, "comentario": "", "data": "2026-08-31"}
+    return {"id": "checklist-1", "status": STATUS_CHECKLIST, "comentario": ""}
 
 
 def _fake_definir_colaborador(checklist_id, usuario_id):
@@ -37,7 +37,7 @@ def _fake_definir_colaborador(checklist_id, usuario_id):
 
 def _fake_buscar_checklist(checklist_id):
     return {
-        "id": "checklist-1", "status": STATUS_CHECKLIST, "comentario": "", "data": "2026-08-31",
+        "id": "checklist-1", "status": STATUS_CHECKLIST, "comentario": "",
         "colaborador_id": "u1", "supervisor_id": "sup1" if STATUS_CHECKLIST == "completo" else None,
     }
 
@@ -62,25 +62,6 @@ def _fake_salvar_respostas_em_lote(respostas):
     return len(respostas)
 
 
-# Controlado por TESTE_ATRASADO — desacopla o teste do relógio real.
-# "0" (padrão): nenhuma ronda atrasada. "1": a ronda única do fixture
-# (horario-1) está sempre atrasada, pra testar o fluxo de justificativa.
-_ATRASADO_TESTE = os.environ.get("TESTE_ATRASADO", "0") == "1"
-JUSTIFICATIVAS_SALVAS = []
-
-
-def _fake_esta_atrasado(data_referencia, horario_str, turno_nome, referencia_agora=None):
-    return _ATRASADO_TESTE
-
-
-def _fake_listar_justificativas_atraso(checklist_id):
-    return {}
-
-
-def _fake_salvar_justificativa_atraso(checklist_id, horario_id, justificativa, usuario_id):
-    JUSTIFICATIVAS_SALVAS.append((checklist_id, horario_id, justificativa, usuario_id))
-
-
 def _fake_nomes_usuarios(ids):
     return {"u1": "Colaborador Teste", "sup1": "Supervisor Teste"}
 
@@ -101,7 +82,6 @@ def _fake_obter_checklist_completo(checklist_id):
         "itens": _fake_listar_itens("template-1"),
         "horarios": _fake_listar_horarios("template-1", 1),
         "respostas": {},
-        "justificativas_atraso": {},
         "colaborador_nome": "Colaborador Teste",
         "supervisor_nome": "Supervisor Teste",
     }
@@ -123,9 +103,6 @@ pui.listar_itens = _fake_listar_itens
 pui.listar_horarios = _fake_listar_horarios
 pui.listar_respostas = _fake_listar_respostas
 pui.salvar_respostas_em_lote = _fake_salvar_respostas_em_lote
-pui.esta_atrasado = _fake_esta_atrasado
-pui.listar_justificativas_atraso = _fake_listar_justificativas_atraso
-pui.salvar_justificativa_atraso = _fake_salvar_justificativa_atraso
 pui.nomes_usuarios = _fake_nomes_usuarios
 pui.autenticar = _fake_autenticar
 pui.concluir_checklist = _fake_concluir_checklist
@@ -133,15 +110,9 @@ pui.obter_checklist_completo = _fake_obter_checklist_completo
 pui.obter_logo_bytes_com_fallback = _fake_obter_logo_bytes_com_fallback
 pui.gerar_pdf_checklist = _fake_gerar_pdf_checklist
 
-_PAPEL_TESTE = os.environ.get("TESTE_PAPEL", "producao")
-usuario_fake = SimpleNamespace(
-    id="u1", nome="Teste", papel=_PAPEL_TESTE,
-    pode_assinar_checklist=(_PAPEL_TESTE != "producao"),
-    pode_concluir_proprio_checklist=(_PAPEL_TESTE == "producao"),
-)
+usuario_fake = SimpleNamespace(id="u1", nome="Teste", papel="producao", pode_assinar_checklist=False)
 template_fake = {"id": "template-1", "area": "Área Teste", "codigo": "COD001"}
 
 pui.renderizar_preenchimento(usuario_fake, template_fake)
 
 st.session_state["_chamadas_salvar_debug"] = CHAMADAS_SALVAR
-st.session_state["_justificativas_salvas_debug"] = JUSTIFICATIVAS_SALVAS

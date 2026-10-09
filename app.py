@@ -2,7 +2,6 @@
 import streamlit as st
 
 from src.auth import exigir_login, logout, trocar_senha
-from src.ecoresinator_ui import renderizar_ecoresinator
 from src.models import buscar_template_por_slug
 from src.preenchimento_ui import renderizar_preenchimento
 from src.sidebar import mostrar_usuario_logado
@@ -37,13 +36,6 @@ if usuario.senha_temporaria:
             st.success("Senha atualizada. Faça login novamente.")
             logout()
             st.rerun()
-    st.stop()
-
-# QR code fixo do Ecoresinator — mesmo princípio do ?area= abaixo (só
-# que ele não tem slug de template, é um formulário único e fixo).
-if st.query_params.get("form") == "ecoresinator":
-    mostrar_usuario_logado(usuario)
-    renderizar_ecoresinator(usuario)
     st.stop()
 
 # QR code fixo por área: renderiza o preenchimento AQUI MESMO, sem trocar

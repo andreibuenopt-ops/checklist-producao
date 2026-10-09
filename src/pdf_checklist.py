@@ -4,7 +4,6 @@ do sistema (src/pdf_5_porques.py).
 """
 import io
 
-from src.turnos import formatar_datahora_local
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_CENTER
 from reportlab.lib.pagesizes import A4
@@ -43,7 +42,9 @@ def _formatar_data(valor) -> str:
 
 
 def _formatar_datahora(valor) -> str:
-    return formatar_datahora_local(valor)
+    if not valor:
+        return "-"
+    return str(valor)[:16].replace("T", " ")
 
 
 def gerar_pdf_checklist(dados: dict, logo_bytes: bytes | None = None) -> bytes:
@@ -52,7 +53,6 @@ def gerar_pdf_checklist(dados: dict, logo_bytes: bytes | None = None) -> bytes:
     itens = dados["itens"]
     horarios = dados["horarios"]
     respostas = dados["respostas"]
-    justificativas_atraso = dados.get("justificativas_atraso", {})
 
     buf = io.BytesIO()
     doc = SimpleDocTemplate(
@@ -97,40 +97,15 @@ def gerar_pdf_checklist(dados: dict, logo_bytes: bytes | None = None) -> bytes:
     elementos.append(Spacer(1, 5 * mm))
 
     for horario in horarios:
-        titulo_ronda = f"Ronda das {horario['horario'][:5]}"
-        justificativa_ronda = texto_seguro(justificativas_atraso.get(horario["id"], ""))
-        if justificativa_ronda:
-            titulo_ronda += " — ATRASADA"
-        elementos.append(Paragraph(titulo_ronda, subtitulo_style))
-        if justificativa_ronda:
-            elementos.append(Paragraph(
-                f'<font size=9 color="#a33">'
-                f"<b>Justificativa do atraso:</b> {justificativa_ronda}</font>",
-                normal,
-            ))
+        elementos.append(Paragraph(f"Ronda das {horario['horario'][:5]}", subtitulo_style))
         elementos.append(Spacer(1, 2 * mm))
 
         linhas = [["Item", "Resposta"]]
         cores_fundo = []  # (linha, cor) — linha 0 é o cabeçalho, respostas começam em 1
         for idx, item in enumerate(itens, start=1):
-            registro = respostas.get((item["id"], horario["id"])) or {}
-            resposta = registro.get("resposta") or "-"
-            observacao = texto_seguro(registro.get("observacao") or "")
-
-            texto_item = texto_seguro(item["pergunta"])
-            if item.get("tipo_resposta") == "texto_livre":
-                resposta_exibida = observacao or "-"
-                linhas.append([Paragraph(texto_item, normal), Paragraph(resposta_exibida, normal)])
-                continue
-
-            if resposta == "Não" and observacao:
-                texto_item += (
-                    f'<br/><font size=8 color="#555555">'
-                    f"<b>Observação:</b> {observacao}</font>"
-                )
-
+            resposta = respostas.get((item["id"], horario["id"])) or "-"
             linhas.append([
-                Paragraph(texto_item, normal),
+                Paragraph(texto_seguro(item["pergunta"]), normal),
                 resposta,
             ])
             if resposta in COR_FUNDO_RESPOSTA:

@@ -188,8 +188,6 @@ create table if not exists checklist_templates (
     observacao      text,
     setor_id        smallint references setores_processo(id),
     equipamento_id  uuid references equipamentos(id),
-    tipo_area       text not null default 'interno'
-                    check (tipo_area in ('interno', 'externo')),
     ordem_processo  smallint not null default 999,
     ativo           boolean not null default true,
     criado_em       timestamptz not null default now()
@@ -204,8 +202,6 @@ create table if not exists checklist_template_itens (
     pergunta      text not null,
     criticidade   text not null default 'media'
                   check (criticidade in ('critica', 'alta', 'media')),
-    tipo_resposta text not null default 'sim_nao'
-                  check (tipo_resposta in ('sim_nao', 'texto_livre')),
     unique (template_id, ordem)
 );
 
@@ -248,25 +244,10 @@ create table if not exists checklist_respostas (
     checklist_id    uuid not null references checklists(id) on delete cascade,
     item_id         uuid not null references checklist_template_itens(id),
     horario_id      uuid not null references checklist_template_horarios(id),
-    resposta        text check (resposta in ('Sim', 'Não', 'N/A', 'Texto')),
-    observacao      text not null default '',
+    resposta        text check (resposta in ('Sim', 'Não', 'N/A')),
     respondido_por  uuid references usuarios(id),
     respondido_em   timestamptz not null default now(),
     unique (checklist_id, item_id, horario_id)
-);
-
--- Justificativa quando uma ronda (horário específico dentro do turno) é
--- concluída com mais de 1h de atraso em relação ao horário programado no
--- template. Uma linha por (checklist, horário) — igual à granularidade
--- de checklist_respostas, mas no nível da RONDA inteira, não do item.
-create table if not exists checklist_justificativas_atraso (
-    id              uuid primary key default gen_random_uuid(),
-    checklist_id    uuid not null references checklists(id) on delete cascade,
-    horario_id      uuid not null references checklist_template_horarios(id),
-    justificativa   text not null,
-    registrado_por  uuid references usuarios(id),
-    registrado_em   timestamptz not null default now(),
-    unique (checklist_id, horario_id)
 );
 
 -- ---------------------------------------------------------------------
@@ -354,52 +335,6 @@ create table analise_5_porques_acoes (
 drop trigger if exists trg_5porques_atualizado_em on analises_5_porques;
 create trigger trg_5porques_atualizado_em
     before update on analises_5_porques
-    for each row execute function set_atualizado_em();
-
--- ---------------------------------------------------------------------
--- ECORESINATOR (cozinha de cola) — formulário próprio e dedicado.
--- Não é um checklist Sim/Não comum: é uma leitura técnica (vazão,
--- eficiência, pressão) por bico injetor, uma vez por turno, "logo na
--- primeira hora" (sem horário fixo — o operador registra a hora real).
--- Os "leituras_bicos" ficam em JSONB (lista de até 14 bicos) por ser
--- estrutura tabular variável — normalizar em tabela própria não trouxe
--- benefício real pra um formulário que só existe para este equipamento.
--- ---------------------------------------------------------------------
-create table if not exists ecoresinator_checklists (
-    id                          uuid primary key default gen_random_uuid(),
-    turno_id                    smallint not null references turnos(id),
-    data                        date not null,
-    colaborador_id              uuid references usuarios(id),
-    supervisor_id               uuid references usuarios(id),
-    horario_real                text not null default '',
-    leituras_bicos              jsonb not null default '[]',
-    bicos_em_manutencao         text not null default '',
-    bicos_em_producao           text not null default '',
-    rodizio_ligado              text check (rodizio_ligado in ('Sim', 'Não')),
-    flush_ligado                text check (flush_ligado in ('Sim', 'Não')),
-    pressao_bomba_resina        numeric,
-    pressao_coletor_resina      numeric,
-    pressao_bomba_agua          numeric,
-    pressao_coletor_agua        numeric,
-    pressao_vapor_coletor       numeric,
-    vazao_resina_bomba          numeric,
-    valvula_proporcional_auto   text check (valvula_proporcional_auto in ('Sim', 'Não')),
-    agulhas_force_abertura      text check (agulhas_force_abertura in ('Sim', 'Não')),
-    bomba_resina_manutencao     text check (bomba_resina_manutencao in ('Sim', 'Não')),
-    bomba_resina_em_uso         text not null default '',
-    bomba_parafina_em_uso       text not null default '',
-    comentario                  text not null default '',
-    status                      text not null default 'pendente'
-                                check (status in ('pendente', 'completo')),
-    concluido_em                timestamptz,
-    criado_em                   timestamptz not null default now(),
-    atualizado_em               timestamptz not null default now(),
-    unique (turno_id, data)
-);
-
-drop trigger if exists trg_ecoresinator_atualizado_em on ecoresinator_checklists;
-create trigger trg_ecoresinator_atualizado_em
-    before update on ecoresinator_checklists
     for each row execute function set_atualizado_em();
 
 -- ---------------------------------------------------------------------
@@ -518,8 +453,6 @@ alter table checklist_template_itens enable row level security;
 alter table checklist_template_horarios enable row level security;
 alter table checklists enable row level security;
 alter table checklist_respostas enable row level security;
-alter table checklist_justificativas_atraso enable row level security;
-alter table ecoresinator_checklists enable row level security;
 alter table checklist_sugestoes enable row level security;
 alter table analises_5_porques enable row level security;
 alter table analise_5_porques_acoes enable row level security;
@@ -551,12 +484,6 @@ drop policy if exists "app_full_access" on checklists;
 create policy "app_full_access" on checklists for all using (true) with check (true);
 drop policy if exists "app_full_access" on checklist_respostas;
 create policy "app_full_access" on checklist_respostas for all using (true) with check (true);
-
-drop policy if exists "app_full_access" on checklist_justificativas_atraso;
-create policy "app_full_access" on checklist_justificativas_atraso for all using (true) with check (true);
-
-drop policy if exists "app_full_access" on ecoresinator_checklists;
-create policy "app_full_access" on ecoresinator_checklists for all using (true) with check (true);
 drop policy if exists "app_full_access" on checklist_sugestoes;
 create policy "app_full_access" on checklist_sugestoes for all using (true) with check (true);
 drop policy if exists "app_full_access" on analises_5_porques;

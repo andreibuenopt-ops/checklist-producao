@@ -28,11 +28,6 @@ def url_do_checklist(base_url: str, slug: str) -> str:
     return f"{base_url}/?area={slug}"
 
 
-def url_do_ecoresinator(base_url: str) -> str:
-    base_url = (base_url or "").rstrip("/")
-    return f"{base_url}/?form=ecoresinator"
-
-
 def validar_url_base(base_url: str) -> tuple[bool, str]:
     """Detecta os erros de URL mais comuns antes de gerar um QR Code — evita
     imprimir e colar na parede um QR que abre a URL errada.
