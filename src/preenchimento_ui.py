@@ -301,43 +301,41 @@ def renderizar_preenchimento(usuario, template: dict):
 
     # -------------------------------------------------------------
     # Assinatura e conclusão.
-    # Produção conclui sozinha (própria sessão já autenticada).
-    # Supervisor/coordenação/administrador/master continuam assinando
-    # com login separado — mantém a dupla checagem pra quem revisa
-    # checklist de terceiros.
+    # Qualquer usuário logado conclui sozinho, com a própria sessão —
+    # sem depender do papel. Quem quiser dupla checagem pode, opcionalmente,
+    # assinar com o login de um supervisor/coordenador/master (expander).
     # -------------------------------------------------------------
     st.divider()
-    st.subheader("✍️ Assinatura de conclusão")
+    st.subheader("✍️ Conclusão")
     st.warning(
         "⚠️ **Depois de concluído, este checklist não pode mais ser editado.** "
-        "Confira todas as respostas com atenção antes de concluir. Aperte "
-        "\"Atualizar respostas\" antes, pra garantir que tudo que você marcou foi confirmado."
+        "Aperte \"Atualizar respostas\" antes de concluir, pra garantir que tudo "
+        "que você marcou foi confirmado."
     )
 
-    if usuario.pode_concluir_proprio_checklist:
-        st.caption(f"Você vai concluir e assinar como **{usuario.nome}**.")
-        with st.form(f"form_concluir_{checklist['id']}"):
-            concluir = st.form_submit_button(
-                "✅ Concluir checklist", type="primary", use_container_width=True,
-            )
-        if concluir:
-            if faltando:
-                st.error(f"Ainda faltam {faltando} pergunta(s) sem resposta. Confirme com \"Atualizar respostas\" primeiro.")
-            else:
-                concluir_checklist(checklist["id"], usuario.id, comentario.strip())
-                if "area" in st.query_params:
-                    del st.query_params["area"]
-                st.success(f"Checklist concluído e assinado por {usuario.nome}. ✅")
-                st.balloons()
-                st.rerun()
-    else:
-        st.caption("O checklist só é considerado concluído após a confirmação de um supervisor, coordenador ou master.")
-        with st.form(f"form_concluir_{checklist['id']}"):
+    st.caption(f"Você vai concluir e assinar como **{usuario.nome}**.")
+    with st.form(f"form_concluir_{checklist['id']}"):
+        concluir = st.form_submit_button(
+            "✅ Concluir checklist", type="primary", use_container_width=True,
+        )
+    if concluir:
+        if faltando:
+            st.error(f"Ainda faltam {faltando} pergunta(s) sem resposta. Confirme com \"Atualizar respostas\" primeiro.")
+        else:
+            concluir_checklist(checklist["id"], usuario.id, comentario.strip())
+            if "area" in st.query_params:
+                del st.query_params["area"]
+            st.success(f"Checklist concluído e assinado por {usuario.nome}. ✅")
+            st.balloons()
+            st.rerun()
+
+    with st.expander("🔏 Assinar com outro usuário (supervisor) — opcional"):
+        with st.form(f"form_concluir_outro_{checklist['id']}"):
             identificador_sup = st.text_input("E-mail ou matrícula de quem assina")
             senha_sup = st.text_input("Senha", type="password")
-            concluir = st.form_submit_button("Concluir checklist", type="primary", use_container_width=True)
+            concluir_outro = st.form_submit_button("Assinar e concluir com outro usuário", use_container_width=True)
 
-        if concluir:
+        if concluir_outro:
             if faltando:
                 st.error(f"Ainda faltam {faltando} pergunta(s) sem resposta. Confirme com \"Atualizar respostas\" primeiro.")
             else:

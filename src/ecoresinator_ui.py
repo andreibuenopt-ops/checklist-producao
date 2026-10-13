@@ -136,21 +136,22 @@ def renderizar_ecoresinator(usuario):
         key=f"eco_comentario_{checklist['id']}",
     )
 
-    st.subheader("✍️ Assinatura de conclusão")
+    st.subheader("✍️ Conclusão")
     st.warning("⚠️ Depois de concluída, esta rotina não pode mais ser editada. Salve as leituras antes de concluir.")
 
-    if usuario.pode_concluir_proprio_checklist:
-        st.caption(f"Você vai concluir e assinar como **{usuario.nome}**.")
-        if st.button("✅ Concluir rotina", type="primary", use_container_width=True):
-            concluir_ecoresinator(checklist["id"], usuario.id, comentario.strip())
-            st.success(f"Rotina concluída e assinada por {usuario.nome}. ✅")
-            st.balloons()
-            st.rerun()
-    else:
+    # Qualquer usuário logado conclui sozinho, com a própria sessão.
+    st.caption(f"Você vai concluir e assinar como **{usuario.nome}**.")
+    if st.button("✅ Concluir rotina", type="primary", use_container_width=True):
+        concluir_ecoresinator(checklist["id"], usuario.id, comentario.strip())
+        st.success(f"Rotina concluída e assinada por {usuario.nome}. ✅")
+        st.balloons()
+        st.rerun()
+
+    with st.expander("🔏 Assinar com outro usuário (supervisor) — opcional"):
         with st.form(f"form_concluir_eco_{checklist['id']}"):
             identificador_sup = st.text_input("E-mail ou matrícula de quem assina")
             senha_sup = st.text_input("Senha", type="password")
-            concluir = st.form_submit_button("Concluir rotina", type="primary", use_container_width=True)
+            concluir = st.form_submit_button("Assinar e concluir com outro usuário", use_container_width=True)
         if concluir:
             assinante, erro = autenticar(identificador_sup, senha_sup)
             if not assinante:

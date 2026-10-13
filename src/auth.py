@@ -33,13 +33,6 @@ class Usuario:
         return self.papel in ("supervisor", "coordenacao", "administrador", "master")
 
     @property
-    def pode_concluir_proprio_checklist(self) -> bool:
-        """Produção pode concluir sozinha o checklist que ela mesma
-        preencheu — sem precisar de login separado de um supervisor.
-        Usa a própria sessão já autenticada como assinatura."""
-        return self.papel == "producao"
-
-    @property
     def pode_ver_dashboard(self) -> bool:
         return self.papel in ("supervisor", "coordenacao", "administrador", "master")
 

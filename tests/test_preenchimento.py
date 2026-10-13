@@ -86,7 +86,7 @@ def test_area_some_da_url_ao_abrir_ja_completo(monkeypatch):
     assert any("já foi concluído" in el.value for el in at.success)
 
 
-def test_supervisor_ainda_assina_com_login_separado(monkeypatch):
+def test_supervisor_pode_assinar_com_outro_usuario_opcionalmente(monkeypatch):
     monkeypatch.setenv("TESTE_STATUS", "em_andamento")
     monkeypatch.setenv("TESTE_PAPEL", "supervisor")
     at = AppTest.from_file(APP)
@@ -97,15 +97,37 @@ def test_supervisor_ainda_assina_com_login_separado(monkeypatch):
     [b for b in at.button if "Atualizar" in b.label][0].click()
     at.run()
 
-    # Supervisor continua precisando digitar credenciais próprias pra assinar.
+    # Assinatura por outro usuário continua disponível (expander opcional).
     inputs = at.text_input
     inputs[0].set_value("supervisor@teste.com")
     inputs[1].set_value("senha123")
-    [b for b in at.button if "Concluir" in b.label][0].click()
+    [b for b in at.button if "outro usuário" in b.label][0].click()
     at.run()
 
     assert not at.exception
     assert "area" not in at.query_params
+
+
+def test_qualquer_papel_conclui_sozinho_com_um_clique(monkeypatch):
+    """Operador (e qualquer outro papel) conclui com a própria sessão,
+    sem precisar digitar login/senha de ninguém."""
+    for papel in ("producao", "supervisor", "master"):
+        monkeypatch.setenv("TESTE_STATUS", "em_andamento")
+        monkeypatch.setenv("TESTE_PAPEL", papel)
+        at = AppTest.from_file(APP)
+        at.run()
+
+        at.segmented_control[0].set_value("Sim")
+        at.segmented_control[1].set_value("Sim")
+        [b for b in at.button if "Atualizar" in b.label][0].click()
+        at.run()
+
+        # Sem preencher nenhum campo de login/senha.
+        [b for b in at.button if "Concluir checklist" in b.label][0].click()
+        at.run()
+
+        assert not at.exception, papel
+        assert "area" not in at.query_params, papel
 
 
 def test_ronda_atrasada_nao_bloqueia_conclusao_sem_justificativa(monkeypatch):

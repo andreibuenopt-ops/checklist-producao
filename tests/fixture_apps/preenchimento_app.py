@@ -137,7 +137,6 @@ _PAPEL_TESTE = os.environ.get("TESTE_PAPEL", "producao")
 usuario_fake = SimpleNamespace(
     id="u1", nome="Teste", papel=_PAPEL_TESTE,
     pode_assinar_checklist=(_PAPEL_TESTE != "producao"),
-    pode_concluir_proprio_checklist=(_PAPEL_TESTE == "producao"),
 )
 template_fake = {"id": "template-1", "area": "Área Teste", "codigo": "COD001"}
 
