@@ -19,6 +19,7 @@ def _fake_exigir_login():
         id="u1", nome="Operador Teste", papel="producao",
         pode_escolher_checklist_manualmente=False,
         pode_ver_dashboard=False, pode_gerar_qrcodes=False, pode_gerenciar_sistema=False,
+        pode_abrir_5_porques=False,
         matricula="12345",
     )
 

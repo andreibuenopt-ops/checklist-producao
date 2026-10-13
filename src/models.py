@@ -25,6 +25,42 @@ def listar_setores():
     return supabase.table("setores_processo").select("*").order("ordem").execute().data
 
 
+def editar_setor_nome(setor_id: int, nome: str):
+    """Renomeia o setor/processo formal — usado como cabeçalho de
+    agrupamento em Gerar QRCodes, Preencher Checklist (seleção manual) e
+    Dashboard. Diferente de atualizar_nome_exibicao(): isso muda o nome
+    em TODO o sistema, não só a etiqueta de um checklist específico.
+    Só faz sentido quando o setor tem pouco (ou nenhum) outro checklist
+    dividindo o mesmo agrupamento."""
+    supabase.table("setores_processo").update({"nome": nome.strip()}).eq("id", setor_id).execute()
+
+
+def criar_setor(nome: str) -> dict:
+    """Cria um setor/processo novo. id e ordem não são automáticos
+    (smallint manual na tabela) — pega o próximo disponível."""
+    setores = listar_setores()
+    novo_id = max((s["id"] for s in setores), default=0) + 1
+    novo_ordem = max((s["ordem"] for s in setores), default=0) + 1
+    res = supabase.table("setores_processo").insert({
+        "id": novo_id, "nome": nome.strip(), "ordem": novo_ordem,
+    }).execute()
+    return res.data[0]
+
+
+def mudar_setor_checklist(template_id: str, setor_id: int):
+    supabase.table("checklist_templates").update({"setor_id": setor_id}).eq("id", template_id).execute()
+
+
+def mover_para_setor_proprio(template_id: str, nome_setor: str) -> dict:
+    """Separa esse checklist num setor novo, exclusivo pra ele — sem
+    afetar o setor antigo nem os outros checklists que ficaram nele.
+    Resolve o caso de checklist "perdido" dentro de um setor genérico
+    (ex.: Sifter dentro de Silo de Cavaco)."""
+    novo_setor = criar_setor(nome_setor)
+    mudar_setor_checklist(template_id, novo_setor["id"])
+    return novo_setor
+
+
 def listar_turnos():
     return supabase.table("turnos").select("*").order("ordem").execute().data
 
@@ -81,7 +117,7 @@ def buscar_template_por_slug(slug: str):
 
 def criar_template(
     codigo: str, titulo: str, setor_id: int, revisao: str = "", observacao: str = "",
-    equipamento_id: str | None = None,
+    equipamento_id: str | None = None, tipo_area: str = "interno",
 ):
     setor = next(s for s in listar_setores() if s["id"] == setor_id)
     area = setor["nome"]
@@ -96,6 +132,7 @@ def criar_template(
         "slug": _slugify(titulo),
         "setor_id": setor_id,
         "equipamento_id": equipamento_id,
+        "tipo_area": tipo_area,
         "ordem_processo": setor["ordem"] * 10,
         "revisao": revisao,
         "observacao": observacao,
@@ -109,6 +146,14 @@ def desativar_template(template_id: str):
 
 def reativar_template(template_id: str):
     supabase.table("checklist_templates").update({"ativo": True}).eq("id", template_id).execute()
+
+
+def atualizar_nome_exibicao(template_id: str, area: str):
+    """Nome que aparece no QR (etiqueta/cartaz) e na "Área" do checklist —
+    independente do setor formal (setor_id), que continua controlando o
+    agrupamento por processo em todo o resto do sistema. Editar aqui NÃO
+    reclassifica o checklist, só troca o rótulo mostrado."""
+    supabase.table("checklist_templates").update({"area": area.strip()}).eq("id", template_id).execute()
 
 
 # =====================================================================
@@ -125,11 +170,14 @@ def listar_itens(template_id: str):
     )
 
 
-def adicionar_itens(template_id: str, perguntas: list[str], criticidade: str = "media"):
+def adicionar_itens(template_id: str, perguntas: list[str], criticidade: str = "media", tipo_resposta: str = "sim_nao"):
     itens_atuais = listar_itens(template_id)
     proxima_ordem = max((i["ordem"] for i in itens_atuais), default=0)
     payload = [
-        {"template_id": template_id, "ordem": proxima_ordem + i, "pergunta": p, "criticidade": criticidade}
+        {
+            "template_id": template_id, "ordem": proxima_ordem + i, "pergunta": p,
+            "criticidade": criticidade, "tipo_resposta": tipo_resposta,
+        }
         for i, p in enumerate((p.strip() for p in perguntas if p.strip()), start=1)
     ]
     if payload:
@@ -140,10 +188,11 @@ def remover_item(item_id: str):
     supabase.table("checklist_template_itens").delete().eq("id", item_id).execute()
 
 
-def editar_item(item_id: str, pergunta: str, criticidade: str):
+def editar_item(item_id: str, pergunta: str, criticidade: str, tipo_resposta: str = "sim_nao"):
     supabase.table("checklist_template_itens").update({
         "pergunta": pergunta.strip(),
         "criticidade": criticidade,
+        "tipo_resposta": tipo_resposta,
     }).eq("id", item_id).execute()
 
 
@@ -187,6 +236,36 @@ def definir_horarios_turnos(template_id: str, horarios_por_turno: dict):
 
 def remover_horario(horario_id: str):
     supabase.table("checklist_template_horarios").delete().eq("id", horario_id).execute()
+
+
+MAX_HORARIOS_POR_TURNO = 6
+
+
+def adicionar_horario(template_id: str, turno_id: int, horario: str) -> str | None:
+    """Adiciona mais uma ronda (horário) num turno já existente do
+    checklist. Devolve uma mensagem de erro (string) se não der — None
+    se deu certo. Limite de MAX_HORARIOS_POR_TURNO por turno."""
+    existentes = (
+        supabase.table("checklist_template_horarios")
+        .select("id, ordem")
+        .eq("template_id", template_id)
+        .eq("turno_id", turno_id)
+        .execute()
+        .data
+    )
+    if len(existentes) >= MAX_HORARIOS_POR_TURNO:
+        return f"Esse turno já tem o máximo de {MAX_HORARIOS_POR_TURNO} horários."
+    proxima_ordem = max((e["ordem"] for e in existentes), default=0) + 1
+    try:
+        supabase.table("checklist_template_horarios").insert({
+            "template_id": template_id, "turno_id": turno_id,
+            "horario": horario, "ordem": proxima_ordem,
+        }).execute()
+    except Exception as e:
+        if "duplicate" in str(e).lower() or "unique" in str(e).lower():
+            return "Esse turno já tem uma ronda nesse mesmo horário."
+        raise
+    return None
 
 
 def editar_horario(horario_id: str, novo_horario: str):
@@ -247,21 +326,33 @@ def concluir_checklist(checklist_id: str, supervisor_id: str, comentario: str):
 # Respostas
 # =====================================================================
 def listar_respostas(checklist_id: str) -> dict:
+    """Retorna {(item_id, horario_id): {"resposta": ..., "observacao": ...}}.
+
+    "observacao" é o relato específico daquele item (preenchido quando a
+    resposta é "Não") — diferente do campo "comentario" geral do checklist.
+    """
     res = (
         supabase.table("checklist_respostas")
-        .select("item_id, horario_id, resposta")
+        .select("item_id, horario_id, resposta, observacao")
         .eq("checklist_id", checklist_id)
         .execute()
     )
-    return {(r["item_id"], r["horario_id"]): r["resposta"] for r in res.data}
+    return {
+        (r["item_id"], r["horario_id"]): {
+            "resposta": r["resposta"],
+            "observacao": r.get("observacao") or "",
+        }
+        for r in res.data
+    }
 
 
-def salvar_resposta(checklist_id: str, item_id: str, horario_id: str, resposta: str, usuario_id: str):
+def salvar_resposta(checklist_id: str, item_id: str, horario_id: str, resposta: str, usuario_id: str, observacao: str = ""):
     supabase.table("checklist_respostas").upsert({
         "checklist_id": checklist_id,
         "item_id": item_id,
         "horario_id": horario_id,
         "resposta": resposta,
+        "observacao": observacao or "",
         "respondido_por": usuario_id,
         "respondido_em": "now()",
     }, on_conflict="checklist_id,item_id,horario_id").execute()
@@ -285,12 +376,37 @@ def salvar_respostas_em_lote(respostas: list[dict]) -> int:
 
 
 # =====================================================================
+# Justificativa de atraso (ronda concluída com >1h de atraso)
+# =====================================================================
+def listar_justificativas_atraso(checklist_id: str) -> dict:
+    """Retorna {horario_id: justificativa} das rondas atrasadas já
+    justificadas nesse checklist."""
+    res = (
+        supabase.table("checklist_justificativas_atraso")
+        .select("horario_id, justificativa")
+        .eq("checklist_id", checklist_id)
+        .execute()
+    )
+    return {r["horario_id"]: r["justificativa"] for r in res.data}
+
+
+def salvar_justificativa_atraso(checklist_id: str, horario_id: str, justificativa: str, usuario_id: str):
+    supabase.table("checklist_justificativas_atraso").upsert({
+        "checklist_id": checklist_id,
+        "horario_id": horario_id,
+        "justificativa": justificativa,
+        "registrado_por": usuario_id,
+        "registrado_em": "now()",
+    }, on_conflict="checklist_id,horario_id").execute()
+
+
+# =====================================================================
 # Dashboard
 # =====================================================================
 def checklists_do_dia(data_ref: date):
     res = (
         supabase.table("checklists")
-        .select("*, checklist_templates(titulo, area, codigo), turnos(nome)")
+        .select("*, checklist_templates(titulo, area, codigo, tipo_area), turnos(nome)")
         .eq("data", data_ref.isoformat())
         .execute()
     )
@@ -321,6 +437,7 @@ def obter_checklist_completo(checklist_id: str) -> dict | None:
     itens = listar_itens(checklist["template_id"])
     horarios = listar_horarios(checklist["template_id"], checklist["turno_id"])
     respostas = listar_respostas(checklist_id)
+    justificativas_atraso = listar_justificativas_atraso(checklist_id)
     nomes = nomes_usuarios((checklist.get("colaborador_id"), checklist.get("supervisor_id")))
 
     return {
@@ -330,6 +447,7 @@ def obter_checklist_completo(checklist_id: str) -> dict | None:
         "itens": itens,
         "horarios": horarios,
         "respostas": respostas,
+        "justificativas_atraso": justificativas_atraso,
         "colaborador_nome": nomes.get(checklist.get("colaborador_id"), "-"),
         "supervisor_nome": nomes.get(checklist.get("supervisor_id"), "-"),
     }

@@ -34,7 +34,7 @@ def test_atualizar_respostas_grava_em_uma_chamada_so(monkeypatch):
     assert len(chamadas[0]) == 2  # com as duas respostas dentro
 
     estado = at.session_state["estado_preenchimento_checklist-1"]
-    assert estado == {"tem_nao": True, "faltando": 0}
+    assert estado == {"tem_nao": True, "faltando": 0, "faltando_justificativa": 0}
     assert any("Não" in el.value and "conforme" in el.value for el in at.warning)
 
 
@@ -65,12 +65,10 @@ def test_area_some_da_url_ao_concluir(monkeypatch):
     [b for b in at.button if "Atualizar" in b.label][0].click()
     at.run()
 
-    # Uma das respostas é "Não" — comentário é obrigatório antes de concluir.
+    # Uma das respostas é "Não" — comentário é opcional, preenche mesmo assim.
     at.text_area[0].set_value("Situação resolvida no local.")
 
-    inputs = at.text_input
-    inputs[0].set_value("supervisor@teste.com")
-    inputs[1].set_value("senha123")
+    # usuario_fake é "producao" — conclui sozinho, sem login separado.
     [b for b in at.button if "Concluir" in b.label][0].click()
     at.run()
 
@@ -86,3 +84,69 @@ def test_area_some_da_url_ao_abrir_ja_completo(monkeypatch):
     assert not at.exception
     assert "area" not in at.query_params
     assert any("já foi concluído" in el.value for el in at.success)
+
+
+def test_supervisor_ainda_assina_com_login_separado(monkeypatch):
+    monkeypatch.setenv("TESTE_STATUS", "em_andamento")
+    monkeypatch.setenv("TESTE_PAPEL", "supervisor")
+    at = AppTest.from_file(APP)
+    at.run()
+
+    at.segmented_control[0].set_value("Sim")
+    at.segmented_control[1].set_value("Sim")
+    [b for b in at.button if "Atualizar" in b.label][0].click()
+    at.run()
+
+    # Supervisor continua precisando digitar credenciais próprias pra assinar.
+    inputs = at.text_input
+    inputs[0].set_value("supervisor@teste.com")
+    inputs[1].set_value("senha123")
+    [b for b in at.button if "Concluir" in b.label][0].click()
+    at.run()
+
+    assert not at.exception
+    assert "area" not in at.query_params
+
+
+def test_ronda_atrasada_nao_bloqueia_conclusao_sem_justificativa(monkeypatch):
+    """Justificativa de atraso é só um campo opcional (expander) — não
+    trava a conclusão, nem quando fica em branco."""
+    monkeypatch.setenv("TESTE_STATUS", "em_andamento")
+    monkeypatch.setenv("TESTE_ATRASADO", "1")
+    at = AppTest.from_file(APP)
+    at.run()
+
+    assert any("passou de 1h" in el.value.lower() for el in at.caption)
+
+    at.segmented_control[0].set_value("Sim")
+    at.segmented_control[1].set_value("Sim")
+    # Não preenche a justificativa do atraso — conclui direto mesmo assim.
+    [b for b in at.button if "Atualizar" in b.label][0].click()
+    at.run()
+    [b for b in at.button if "Concluir" in b.label][0].click()
+    at.run()
+
+    assert not at.exception
+    assert at.session_state["_justificativas_salvas_debug"] == []
+    assert "area" not in at.query_params
+
+
+def test_ronda_atrasada_com_justificativa_tambem_permite_concluir(monkeypatch):
+    monkeypatch.setenv("TESTE_STATUS", "em_andamento")
+    monkeypatch.setenv("TESTE_ATRASADO", "1")
+    at = AppTest.from_file(APP)
+    at.run()
+
+    at.segmented_control[0].set_value("Sim")
+    at.segmented_control[1].set_value("Sim")
+    at.text_area[0].set_value("Rota bloqueada por manutenção corretiva na linha.")
+    [b for b in at.button if "Atualizar" in b.label][0].click()
+    at.run()
+
+    assert at.session_state["_justificativas_salvas_debug"] != []
+
+    [b for b in at.button if "Concluir" in b.label][0].click()
+    at.run()
+
+    assert not at.exception
+    assert "area" not in at.query_params
