@@ -527,6 +527,35 @@ def listar_pendentes_assinatura(colaborador_id: str | None = None, dias: int = 3
     return saida
 
 
+def respostas_nao_periodo(inicio: date, fim: date) -> list:
+    """Respostas "Não" de checklists CONCLUÍDOS no período (regra do
+    sistema: o que não foi finalizado não conta nem aparece)."""
+    return _todas_as_linhas(lambda: (
+        supabase.table("checklist_respostas")
+        .select(
+            "id, checklist_template_itens(pergunta), "
+            "checklists!inner(template_id, data, status, checklist_templates(area, codigo))"
+        )
+        .eq("resposta", "Não")
+        .eq("checklists.status", "completo")
+        .gte("checklists.data", inicio.isoformat())
+        .lte("checklists.data", fim.isoformat())
+        .order("id")
+    ))
+
+
+def justificativas_periodo(inicio: date, fim: date) -> list:
+    """Rondas com atraso justificado, em checklists concluídos do período."""
+    return _todas_as_linhas(lambda: (
+        supabase.table("checklist_justificativas_atraso")
+        .select("id, checklists!inner(template_id, data, status, checklist_templates(area, codigo))")
+        .eq("checklists.status", "completo")
+        .gte("checklists.data", inicio.isoformat())
+        .lte("checklists.data", fim.isoformat())
+        .order("id")
+    ))
+
+
 def checklists_do_dia(data_ref: date):
     res = (
         supabase.table("checklists")
