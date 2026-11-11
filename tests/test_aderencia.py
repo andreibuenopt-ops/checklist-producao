@@ -55,3 +55,42 @@ def test_resumos_e_ranking_do_que_mais_esquece():
     assert rank[0]["area"] == "Sifter" and rank[0]["aderencia"] == 0   # Sifter turnos A/B: 0%
     assert somar(linhas)["esperados"] == 12
     assert [t["turno"] for t in por_turno(linhas)] == ["C Noite", "A Manhã", "B Tarde"]
+
+
+def test_montar_relatorio_roda_de_ponta_a_ponta(monkeypatch):
+    """Executa montar_relatorio de verdade (inclusive os imports internos).
+    Antes, um teste só mockava a função inteira e deixou passar um
+    ImportError em produção. monkeypatch.setattr levanta erro se o nome
+    não existir no módulo — então isso também prova que as funções existem."""
+    import src.aderencia as ader
+    import src.ecoresinator as eco
+    import src.models as models
+    import src.turnos as turnos
+
+    atual = turnos.Turno(1, "Manhã", D3)
+    monkeypatch.setattr(turnos, "turno_e_data_referencia", lambda: atual)
+    monkeypatch.setattr(models, "listar_templates", lambda *a, **k: [T_SERRAS])
+    monkeypatch.setattr(models, "listar_checklists_periodo", lambda ini, fim, **k: [_ck("t1", 3, D1)])
+    monkeypatch.setattr(models, "respostas_nao_periodo", lambda ini, fim: [
+        {"checklist_template_itens": {"pergunta": "Correia com danos?"},
+         "checklists": {"checklist_templates": {"area": "Área das Serras"}}}] * 2)
+    monkeypatch.setattr(models, "justificativas_periodo", lambda ini, fim: [{"id": 1}])
+    monkeypatch.setattr(eco, "ecoresinator_primeiro_dia", lambda: D1)
+    monkeypatch.setattr(eco, "ecoresinator_periodo", lambda ini, fim: [
+        {"turno_id": 3, "data": D1.isoformat(), "status": "completo"}])
+
+    rel = ader.montar_relatorio(D1, D3)
+    areas = {l["area"] for l in rel["linhas"]}
+    assert areas == {"Área das Serras", "Ecoresinator (Cozinha de Cola)"}     # Ecoresinator entra no índice
+    assert rel["total_nao"] == 2 and rel["total_atrasos"] == 1
+    assert rel["itens_mais_nao"] == [{"area": "Área das Serras", "pergunta": "Correia com danos?", "qtd": 2}]
+    assert rel["geral"]["realizados"] == 2                                     # 1 checklist + 1 Ecoresinator
+
+
+def test_consultas_do_relatorio_executam_sem_erro(monkeypatch):
+    """As duas consultas paginadas do relatório (Não e atrasos) existem e rodam."""
+    import src.models as models
+    from tests.test_fotos_e_pendentes import _SupabaseFalso
+    monkeypatch.setattr(models, "supabase", _SupabaseFalso({"checklist_respostas": [], "checklist_justificativas_atraso": []}))
+    assert models.respostas_nao_periodo(D1, D3) == []
+    assert models.justificativas_periodo(D1, D3) == []
