@@ -91,8 +91,9 @@ tudo num lugar só quando precisar corrigir algo.
 ### 2.2 Turno atual (`src/turnos.py`)
 
 - `turno_e_data_referencia()` olha a hora **de Brasília** (`ZoneInfo`) e
-  devolve qual turno está rolando (Manhã 07-15h, Tarde 15-23h, Noite
-  23-07h) e a data que esse turno "pertence".
+  devolve qual turno está rolando (A/Manhã 05:20-13:40, B/Tarde 13:40-22:00,
+  C/Noite 22:00-05:20) e o *dia de produção* a que ele pertence (o dia
+  começa pelo C — ver seção 8).
 - É chamada do zero toda vez que a página de preenchimento carrega — não
   existe cache. Por isso o operador nunca preenche o turno errado: o
   sistema decide sozinho, sem depender do relógio do celular dele.
@@ -328,3 +329,49 @@ ambiente real depois de uma mudança grande.
 | `analises_5_porques` | Formulário 5 Porquês de paradas de linha (RCA) |
 | `analise_5_porques_acoes` | Plano de ação (N linhas) de cada análise 5 Porquês |
 | `configuracoes_sistema` | Linha única: logo, cor, e se autocadastro exige aprovação |
+
+## 8. Turnos, fotos, histórico, assinatura pendente e relatórios (versão de outubro/2026)
+
+**Turnos oficiais** (`src/turnos.py`): A/Manhã 05:20–13:40 · B/Tarde 13:40–22:00 · C/Noite 22:00–05:20.
+O **dia de produção começa pelo C**: a sequência do dia é C, A, B, e a Noite que começa às 22h de domingo
+pertence a **segunda-feira**. Toda data gravada em `checklists.data` é o *dia de produção*.
+
+**Ordem para subir (Supabase → código):**
+1. `sql/migration_fotos_historico.sql` (tabela de fotos, bucket privado `checklist-fotos`, coluna `incompleto`,
+   funções de medição de espaço, remove índice redundante)
+2. `sql/migration_paradas_supervisor.sql` (sub-perguntas + as 3 perguntas de parada no Supervisor de Turno)
+3. `sql/migration_dia_producao_noite.sql` — **uma vez só** (tem trava). Empurra 1 dia os registros antigos de Noite.
+   Rodar junto com a subida do código, de preferência na virada de turno.
+4. Subir o código e dar Reboot.
+
+**Fotos** — qualquer item tem "📷 Adicionar foto (opcional)". `src/fotos.py` reduz a imagem (1280 px, JPEG 72) antes de
+enviar; ~100–200 KB por foto. O plano free do Supabase tem 1 GB de Storage: acompanhe em Storage → `checklist-fotos`.
+As fotos aparecem no histórico e no PDF do checklist.
+
+**Histórico** (`pages/8_📜_Histórico.py`, todos os papéis, somente leitura) e o toggle "Ver o que aconteceu no turno anterior"
+dentro do preenchimento (`models.checklist_anterior`, sequência C → A → B).
+
+**Assinatura no dia seguinte** — aba "Pendentes de assinatura" do Histórico. O checklist continua valendo no dia em que foi
+feito. Se faltar resposta, assina como **incompleto** (`checklists.incompleto`): conta como realizado, mas fica marcado.
+Checklist aberto sem nenhuma resposta não aparece nessa lista. *Não cobre o Ecoresinator.*
+
+**Aderência / relatório mensal** (`pages/9_📈_Aderência.py`, supervisor+; exportar = supervisor/admin/master):
+`src/aderencia.py` calcula esperado × realizado por checklist e turno (só turnos já encerrados, só checklists concluídos).
+PDF em `src/pdf_relatorio_mensal.py`; CSV com `;` e acentos prontos pro Excel.
+
+**Armadilha corrigida:** o Supabase devolve no máximo 1000 linhas por consulta. Consultas grandes devem usar
+`models._todas_as_linhas()` — antes, o Dashboard contava só as 1000 primeiras respostas do dia.
+
+### Perguntas com SUB-perguntas (paradas no Supervisor de Turno)
+`checklist_template_itens.pai_item_id` liga uma pergunta-filha ao pai; `exige_foto` bloqueia a conclusão sem foto.
+Quando o pai é respondido **Sim**, as filhas abrem num quadro naquela ronda (`src/itens.py`); se o pai volta pra
+**Não**, as respostas e fotos das filhas são apagadas. Cadastro: Administração → Checklists Cadastrados →
+botão **➕ Sub** ao lado da pergunta. Atenção: no Supervisor de Turno as perguntas se repetem em cada ronda do turno.
+
+### Peso no Supabase grátis (500 MB de banco, 1 GB de fotos, 5 GB de tráfego/mês)
+- Foto reduzida a ~110 KB (1024 px) + miniatura de 240 px; máx. 3 por pergunta; as telas usam só a miniatura.
+- PDF é gerado **sob demanda** (botão "📄 Gerar PDF") — só então as fotos inteiras são baixadas.
+- Dashboard guarda em cache por 2 min as respostas do dia (consulta de milhares de linhas).
+- Administração → **💾 Armazenamento**: barras de uso (banco e fotos) e "Apagar fotos antigas".
+- O banco cresce ~2 MB por dia de uso (milhares de respostas/dia). Acompanhe a barra; quando passar de ~70%
+  é hora de arquivar dados antigos.

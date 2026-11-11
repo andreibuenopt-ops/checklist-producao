@@ -15,9 +15,9 @@ from src.models import (
     obter_logo_bytes_com_fallback,
     respostas_por_data,
 )
-from src.pdf_checklist import gerar_pdf_checklist
+from src.historico_ui import botao_pdf_checklist
 from src.pdf_dashboard import gerar_pdf_dashboard
-from src.turnos import agora_local, formatar_datahora_local
+from src.turnos import agora_local, formatar_datahora_local, turno_e_data_referencia
 from src.tema import aplicar_tema, desativar_traducao_automatica
 from src.sidebar import mostrar_usuario_logado
 
@@ -44,7 +44,7 @@ COR_PENDENCIA = "#d03b3b"
 templates = listar_templates()
 col_data, col_tipo, col_area = st.columns([1, 1, 2])
 with col_data:
-    data_ref = st.date_input("Data", value=agora_local().date(), max_value=agora_local().date())
+    data_ref = st.date_input("Data (dia de produção)", value=turno_e_data_referencia().data_referencia, max_value=turno_e_data_referencia().data_referencia)
 with col_tipo:
     filtro_tipo_area = st.radio("Área", ["Todos", "🏭 Interno", "🌳 Externo"], key="filtro_tipo_area_dash")
 if filtro_tipo_area != "Todos":
@@ -68,7 +68,13 @@ if area_escolhida != "Todas as áreas":
 checklists = [c for c in checklists_todos if c["status"] == "completo"]
 ids_completos = {c["id"] for c in checklists}
 
-respostas = respostas_por_data(data_ref)
+@st.cache_data(ttl=120, show_spinner=False)
+def _respostas_do_dia(dia):
+    # Um dia tem milhares de respostas — cache de 2 min poupa o tráfego do Supabase.
+    return respostas_por_data(dia)
+
+
+respostas = _respostas_do_dia(data_ref)
 if area_escolhida != "Todas as áreas":
     respostas = [
         r for r in respostas
@@ -120,7 +126,10 @@ else:
         {
             "Área": c["checklist_templates"]["area"],
             "Turno": c["turnos"]["nome"],
-            "Status": {"completo": "✅ Completo", "em_andamento": "🟡 Em andamento", "pendente": "⚪ Pendente"}[c["status"]],
+            "Status": (
+                "⚠️ Completo (incompleto)" if c.get("incompleto") and c["status"] == "completo"
+                else {"completo": "✅ Completo", "em_andamento": "🟡 Em andamento", "pendente": "⚪ Pendente"}[c["status"]]
+            ),
             "Colaborador": nomes.get(c.get("colaborador_id"), "-"),
             "Assinado por": nomes.get(c.get("supervisor_id"), "-"),
             "Concluído em": formatar_datahora_local(c.get("concluido_em")),
@@ -177,16 +186,7 @@ if checklists:
         for c in checklists
     }
     checklist_escolhido = st.selectbox("Checklist", list(mapa_checklists.keys()))
-    if st.button("Gerar PDF do checklist selecionado"):
-        dados_completos = obter_checklist_completo(mapa_checklists[checklist_escolhido])
-        if dados_completos:
-            pdf_bytes = gerar_pdf_checklist(dados_completos, obter_logo_bytes_com_fallback())
-            st.download_button(
-                "⬇️ Baixar PDF do checklist",
-                data=pdf_bytes,
-                file_name=f"checklist_{mapa_checklists[checklist_escolhido]}.pdf",
-                mime="application/pdf",
-            )
+    botao_pdf_checklist(mapa_checklists[checklist_escolhido], obter_logo_bytes_com_fallback(), obter_checklist_completo, "dash")
 
 st.divider()
 

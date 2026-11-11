@@ -206,8 +206,13 @@ create table if not exists checklist_template_itens (
                   check (criticidade in ('critica', 'alta', 'media')),
     tipo_resposta text not null default 'sim_nao'
                   check (tipo_resposta in ('sim_nao', 'texto_livre')),
+    -- Sub-pergunta: só aparece (por ronda) quando a pergunta-PAI foi
+    -- respondida "Sim". exige_foto = não conclui sem foto da resposta.
+    pai_item_id   uuid references checklist_template_itens(id) on delete cascade,
+    exige_foto    boolean not null default false,
     unique (template_id, ordem)
 );
+create index if not exists idx_itens_pai on checklist_template_itens (pai_item_id);
 
 -- Horário de verificação por turno — um horário fixo por turno, definido pelo master
 create table if not exists checklist_template_horarios (
@@ -232,6 +237,9 @@ create table if not exists checklists (
     comentario      text not null default '',
     status          text not null default 'pendente'
                     check (status in ('pendente', 'em_andamento', 'completo')),
+    -- true quando foi assinado (ex.: no dia seguinte) com perguntas ainda
+    -- sem resposta. Conta como realizado, mas fica marcado.
+    incompleto      boolean not null default false,
     concluido_em    timestamptz,
     criado_em       timestamptz not null default now(),
     atualizado_em   timestamptz not null default now(),
@@ -254,6 +262,42 @@ create table if not exists checklist_respostas (
     respondido_em   timestamptz not null default now(),
     unique (checklist_id, item_id, horario_id)
 );
+
+-- Fotos anexadas a um item/ronda do checklist (qualquer item, opcional).
+-- O arquivo fica no Storage (bucket privado 'checklist-fotos'); aqui só o
+-- caminho e quem enviou.
+create table if not exists checklist_fotos (
+    id              uuid primary key default gen_random_uuid(),
+    checklist_id    uuid not null references checklists(id) on delete cascade,
+    item_id         uuid not null references checklist_template_itens(id),
+    horario_id      uuid not null references checklist_template_horarios(id),
+    caminho         text not null,
+    enviado_por     uuid references usuarios(id),
+    enviado_em      timestamptz not null default now()
+);
+create index if not exists idx_fotos_checklist on checklist_fotos (checklist_id);
+
+insert into storage.buckets (id, name, public)
+values ('checklist-fotos', 'checklist-fotos', false)
+on conflict (id) do nothing;
+
+drop policy if exists "app_full_access_fotos" on storage.objects;
+create policy "app_full_access_fotos" on storage.objects
+    for all using (bucket_id = 'checklist-fotos') with check (bucket_id = 'checklist-fotos');
+
+-- Medidores de espaço (usados em Administração → Armazenamento).
+create or replace function tamanho_banco_mb() returns numeric
+language sql security definer set search_path = public as $$
+    select round(pg_database_size(current_database()) / 1048576.0, 1)
+$$;
+
+create or replace function tamanho_fotos_mb() returns numeric
+language sql security definer set search_path = public, storage as $$
+    select round(coalesce(sum((metadata->>'size')::bigint), 0) / 1048576.0, 1)
+    from storage.objects where bucket_id = 'checklist-fotos'
+$$;
+
+grant execute on function tamanho_banco_mb(), tamanho_fotos_mb() to anon, authenticated;
 
 -- Justificativa quando uma ronda (horário específico dentro do turno) é
 -- concluída com mais de 1h de atraso em relação ao horário programado no
@@ -408,7 +452,6 @@ create trigger trg_ecoresinator_atualizado_em
 create index if not exists idx_checklists_data              on checklists (data);
 create index if not exists idx_checklists_template_data      on checklists (template_id, data);
 create index if not exists idx_checklists_status             on checklists (status);
-create index if not exists idx_respostas_checklist           on checklist_respostas (checklist_id);
 create index if not exists idx_respostas_checklist_resposta  on checklist_respostas (checklist_id, resposta);
 create index if not exists idx_respostas_resposta_nao        on checklist_respostas (resposta) where resposta = 'Não';
 create index if not exists idx_templates_setor               on checklist_templates (setor_id);
@@ -519,6 +562,7 @@ alter table checklist_template_horarios enable row level security;
 alter table checklists enable row level security;
 alter table checklist_respostas enable row level security;
 alter table checklist_justificativas_atraso enable row level security;
+alter table checklist_fotos enable row level security;
 alter table ecoresinator_checklists enable row level security;
 alter table checklist_sugestoes enable row level security;
 alter table analises_5_porques enable row level security;
@@ -551,6 +595,9 @@ drop policy if exists "app_full_access" on checklists;
 create policy "app_full_access" on checklists for all using (true) with check (true);
 drop policy if exists "app_full_access" on checklist_respostas;
 create policy "app_full_access" on checklist_respostas for all using (true) with check (true);
+
+drop policy if exists "app_full_access" on checklist_fotos;
+create policy "app_full_access" on checklist_fotos for all using (true) with check (true);
 
 drop policy if exists "app_full_access" on checklist_justificativas_atraso;
 create policy "app_full_access" on checklist_justificativas_atraso for all using (true) with check (true);

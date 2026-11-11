@@ -21,6 +21,7 @@ _POSICAO_DASHBOARD = 3
 _POSICAO_QRCODES = 4
 _POSICAO_ADMINISTRACAO = 5
 _POSICAO_5_PORQUES = 7
+_POSICAO_ADERENCIA = 10   # 8=Ecoresinator, 9=Histórico (todos veem), 10=Aderência
 
 
 def _css_ocultar_paginas(usuario) -> str:
@@ -36,6 +37,8 @@ def _css_ocultar_paginas(usuario) -> str:
         ocultar.append(_POSICAO_ADMINISTRACAO)
     if not usuario.pode_abrir_5_porques:
         ocultar.append(_POSICAO_5_PORQUES)
+    if not usuario.pode_ver_dashboard:
+        ocultar.append(_POSICAO_ADERENCIA)
     if not ocultar:
         return ""
     seletores = ", ".join(

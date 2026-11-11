@@ -4,6 +4,7 @@ do sistema (src/pdf_5_porques.py).
 """
 import io
 
+from src.itens import itens_da_ronda
 from src.turnos import formatar_datahora_local
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_CENTER
@@ -12,6 +13,7 @@ from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
 from reportlab.platypus import (
     Image as RLImage,
+    KeepTogether,
     Paragraph,
     SimpleDocTemplate,
     Spacer,
@@ -83,7 +85,10 @@ def gerar_pdf_checklist(dados: dict, logo_bytes: bytes | None = None) -> bytes:
          Paragraph(f"<b>Código:</b> {template.get('codigo', '-')}", normal)],
         [Paragraph(f"<b>Data:</b> {_formatar_data(checklist.get('data'))}", normal),
          Paragraph(f"<b>Turno:</b> {dados.get('turno_nome', '-')}", normal)],
-        [Paragraph(f"<b>Status:</b> {STATUS_LABEL.get(status, status)}", normal),
+        [Paragraph(
+            f"<b>Status:</b> {STATUS_LABEL.get(status, status)}"
+            + (' <font color="#aa3333"><b>(assinado INCOMPLETO)</b></font>' if checklist.get("incompleto") else ""),
+            normal),
          Paragraph(f"<b>Concluído em:</b> {_formatar_datahora(checklist.get('concluido_em'))}", normal)],
         [Paragraph(f"<b>Colaborador:</b> {dados.get('colaborador_nome', '-')}", normal),
          Paragraph(f"<b>Assinado por:</b> {dados.get('supervisor_nome', '-')}", normal)],
@@ -104,7 +109,7 @@ def gerar_pdf_checklist(dados: dict, logo_bytes: bytes | None = None) -> bytes:
         elementos.append(Paragraph(titulo_ronda, subtitulo_style))
         if justificativa_ronda:
             elementos.append(Paragraph(
-                f'<font size=9 color="#a33">'
+                f'<font size=9 color="#aa3333">'
                 f"<b>Justificativa do atraso:</b> {justificativa_ronda}</font>",
                 normal,
             ))
@@ -112,12 +117,12 @@ def gerar_pdf_checklist(dados: dict, logo_bytes: bytes | None = None) -> bytes:
 
         linhas = [["Item", "Resposta"]]
         cores_fundo = []  # (linha, cor) — linha 0 é o cabeçalho, respostas começam em 1
-        for idx, item in enumerate(itens, start=1):
+        for idx, (item, eh_filho) in enumerate(itens_da_ronda(itens, respostas, horario["id"]), start=1):
             registro = respostas.get((item["id"], horario["id"])) or {}
             resposta = registro.get("resposta") or "-"
             observacao = texto_seguro(registro.get("observacao") or "")
 
-            texto_item = texto_seguro(item["pergunta"])
+            texto_item = ("&nbsp;&nbsp;&nbsp;&gt; " if eh_filho else "") + texto_seguro(item["pergunta"])
             if item.get("tipo_resposta") == "texto_livre":
                 resposta_exibida = observacao or "-"
                 linhas.append([Paragraph(texto_item, normal), Paragraph(resposta_exibida, normal)])
@@ -151,6 +156,32 @@ def gerar_pdf_checklist(dados: dict, logo_bytes: bytes | None = None) -> bytes:
         tabela.setStyle(TableStyle(estilo_tabela))
         elementos.append(tabela)
         elementos.append(Spacer(1, 5 * mm))
+
+    # Fotos anexadas (qualquer item/ronda) — vêm com os bytes já baixados.
+    fotos = dados.get("fotos") or []
+    if fotos:
+        elementos.append(Spacer(1, 4 * mm))
+        elementos.append(Paragraph("Fotos anexadas", subtitulo_style))
+        elementos.append(Spacer(1, 2 * mm))
+        perguntas = {i["id"]: i["pergunta"] for i in itens}
+        rondas = {h["id"]: h["horario"][:5] for h in horarios}
+        for f in fotos:
+            if not f.get("bytes"):
+                continue
+            legenda = (
+                f"Ronda {rondas.get(f['horario_id'], '-')} — "
+                f"{texto_seguro(perguntas.get(f['item_id'], ''))[:110]}"
+            )
+            try:
+                img = RLImage(io.BytesIO(f["bytes"]))
+                escala = min(80 * mm / img.imageWidth, 60 * mm / img.imageHeight, 1.0)
+                img.drawWidth, img.drawHeight = img.imageWidth * escala, img.imageHeight * escala
+            except Exception:
+                continue
+            bloco = Table([[img], [Paragraph(legenda, normal)]], colWidths=[85 * mm])
+            bloco.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP")]))
+            elementos.append(KeepTogether(bloco))
+            elementos.append(Spacer(1, 3 * mm))
 
     elementos.append(Paragraph("Comentários", subtitulo_style))
     comentario_limpo = texto_seguro(checklist.get("comentario")) or "—"

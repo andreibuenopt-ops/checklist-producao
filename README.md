@@ -71,9 +71,10 @@ nova senha no próximo login.
 
 1. **Login**: e-mail ou matrícula + senha pessoal.
 2. **QR Code fixo por área**: aponta para `SEU_APP_URL/?area=slug`. Ao
-   escanear, o app detecta a data e o turno atual pelo horário (Manhã
-   07h-15h, Tarde 15h-23h, Noite 23h-07h, com o turno Noite "pertencendo"
-   à data em que começou) e abre/retoma o checklist daquele turno.
+   escanear, o app detecta a data e o turno atual pelo horário (A/Manhã
+   05:20-13:40, B/Tarde 13:40-22:00, C/Noite 22:00-05:20). O dia de produção
+   começa pelo turno C: a Noite que começa às 22h de domingo pertence à
+   segunda-feira. Abre/retoma o checklist daquele turno.
 3. **Preenchimento**: cada pergunta é respondida no horário de checagem do
    turno (Sim/Não/N-A). Salva a cada clique — nada se perde se o operador
    fechar o navegador no meio.

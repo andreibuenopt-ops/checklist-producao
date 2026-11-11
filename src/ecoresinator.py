@@ -89,3 +89,21 @@ def ecoresinator_do_dia(data_ref: date):
         .execute()
     )
     return res.data
+
+
+def ecoresinator_periodo(inicio: date, fim: date) -> list:
+    res = (
+        supabase.table("ecoresinator_checklists")
+        .select("id, turno_id, data, status")
+        .gte("data", inicio.isoformat())
+        .lte("data", fim.isoformat())
+        .execute()
+    )
+    return res.data
+
+
+def ecoresinator_primeiro_dia() -> date | None:
+    """Dia do registro mais antigo — usado como 'data de início' do
+    Ecoresinator no índice de aderência (ele não é um template)."""
+    res = supabase.table("ecoresinator_checklists").select("data").order("data").limit(1).execute()
+    return date.fromisoformat(str(res.data[0]["data"])[:10]) if res.data else None

@@ -1,8 +1,14 @@
 """Detecção do turno atual e data de referência.
 
-Regras (horário oficial da fábrica): Manhã 05h-14h, Tarde 14h-22h,
-Noite 22h-05h. O turno Noite "pertence" à data em que começou (ex.: 02h
-de 10/03 pertence ao turno Noite iniciado em 09/03).
+Regras (horário oficial da fábrica):
+  A / Manhã  05:20 – 13:40
+  B / Tarde  13:40 – 22:00
+  C / Noite  22:00 – 05:20
+
+O DIA DE PRODUÇÃO começa pelo turno C: a sequência do dia é C, A, B. Por
+isso a Noite que começa às 22h de domingo pertence a SEGUNDA-FEIRA (é o
+primeiro turno de segunda). Ex.: 23h de 09/03 e 02h de 10/03 pertencem,
+os dois, ao dia de produção 10/03.
 """
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta, timezone
@@ -13,8 +19,8 @@ try:
 except Exception:
     _TZ = None
 
-_MANHA_INICIO = time(5, 0)
-_TARDE_INICIO = time(14, 0)
+_MANHA_INICIO = time(5, 20)
+_TARDE_INICIO = time(13, 40)
 _NOITE_INICIO = time(22, 0)
 
 
@@ -52,6 +58,12 @@ class Turno:
     data_referencia: date
 
 
+# Ordem dos turnos DENTRO do dia de produção: C (Noite), A (Manhã), B (Tarde).
+ORDEM_NO_DIA = {3: 0, 1: 1, 2: 2}
+NOME_TURNO = {1: "Manhã", 2: "Tarde", 3: "Noite"}
+LETRA_TURNO = {1: "A", 2: "B", 3: "C"}
+
+
 def turno_e_data_referencia() -> Turno:
     agora = agora_local()
     hora = agora.time()
@@ -62,27 +74,44 @@ def turno_e_data_referencia() -> Turno:
     if _TARDE_INICIO <= hora < _NOITE_INICIO:
         return Turno(2, "Tarde", hoje)
     if hora >= _NOITE_INICIO:
-        return Turno(3, "Noite", hoje)
-    return Turno(3, "Noite", hoje - timedelta(days=1))
+        # Noite que começou hoje às 22h: é o 1º turno do dia SEGUINTE.
+        return Turno(3, "Noite", hoje + timedelta(days=1))
+    # Madrugada (antes das 05:20): continua a Noite que já pertence a hoje.
+    return Turno(3, "Noite", hoje)
+
+
+def chave_ordem(turno_id: int, data_ref: date) -> tuple:
+    """Chave pra comparar 'qual turno veio antes' dentro da linha do tempo
+    de produção: (dia de produção, posição no dia — C, A, B)."""
+    return (data_ref, ORDEM_NO_DIA[turno_id])
+
+
+def turno_anterior(turno_id: int, data_ref: date) -> tuple[int, date]:
+    """(turno_id, data de produção) do turno imediatamente anterior."""
+    if turno_id == 1:      # A  <- C do mesmo dia
+        return 3, data_ref
+    if turno_id == 2:      # B  <- A do mesmo dia
+        return 1, data_ref
+    return 2, data_ref - timedelta(days=1)   # C  <- B do dia anterior
 
 
 MARGEM_ATRASO_MINUTOS = 60
 
 
 def horario_programado(data_referencia: date, horario_str: str, turno_nome: str) -> datetime:
-    """Combina a data de referência do turno com o horário (hora) de uma
-    ronda específica do template, devolvendo o datetime completo (com
-    timezone) em que aquela ronda deveria ter sido feita.
+    """Combina o dia de produção do turno com o horário de uma ronda do
+    template, devolvendo o datetime completo (com timezone) em que aquela
+    ronda deveria ter sido feita.
 
-    O turno Noite cruza a virada do dia (ex.: começa 22h de um dia, tem
-    rondas de madrugada no dia seguinte) — igual à regra de
-    data_referencia acima: horários de madrugada (antes do meio-dia)
-    dentro do turno Noite pertencem ao dia SEGUINTE à data_referencia.
+    A Noite cruza a virada do dia e pertence ao dia de produção em que
+    TERMINA: rondas da noite antes do meio-dia (00:00–05:20) caem NO dia
+    de produção; rondas a partir do meio-dia (22:00, 23:00) caem na
+    véspera.
     """
     hora = horario_str if isinstance(horario_str, time) else time.fromisoformat(str(horario_str)[:8])
     dia = data_referencia
-    if turno_nome == "Noite" and hora < time(12, 0):
-        dia = data_referencia + timedelta(days=1)
+    if turno_nome == "Noite" and hora >= time(12, 0):
+        dia = data_referencia - timedelta(days=1)
     dt = datetime.combine(dia, hora)
     return dt.replace(tzinfo=_TZ) if _TZ else dt
 

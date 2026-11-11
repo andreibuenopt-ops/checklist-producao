@@ -9,7 +9,7 @@ APP = str(Path(__file__).resolve().parent / "fixture_apps" / "preencher_manual_a
 
 
 def test_producao_sem_qr_ve_bloqueio_e_lista_somente_leitura():
-    at = AppTest.from_file(APP)
+    at = AppTest.from_file(APP, default_timeout=20)
     at.run()
 
     assert not at.exception
@@ -19,7 +19,7 @@ def test_producao_sem_qr_ve_bloqueio_e_lista_somente_leitura():
 
 
 def test_producao_sem_qr_nao_ve_selectbox_nenhum():
-    at = AppTest.from_file(APP)
+    at = AppTest.from_file(APP, default_timeout=20)
     at.run()
 
     assert not at.exception

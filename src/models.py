@@ -3,10 +3,13 @@ usuários e sugestões de itens.
 """
 import re
 import unicodedata
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 
 from src.db import supabase
+from src.fotos import agrupar_por_item, carregar_bytes, listar_fotos
+from src.itens import contar_esperadas, faltando_fotos, faltando_respostas
+from src.turnos import chave_ordem, turno_anterior, turno_e_data_referencia
 
 
 # =====================================================================
@@ -16,6 +19,20 @@ def _slugify(texto: str) -> str:
     texto = unicodedata.normalize("NFKD", texto).encode("ascii", "ignore").decode()
     texto = re.sub(r"[^\w\s-]", "", texto).strip().lower()
     return re.sub(r"[\s_]+", "-", texto)
+
+
+def _todas_as_linhas(construir_query, tamanho: int = 1000) -> list:
+    """O Supabase devolve no máximo 1000 linhas por consulta — sem paginar,
+    qualquer relatório com mais que isso fica SILENCIOSAMENTE truncado.
+    `construir_query` é uma função sem argumentos que devolve a query já
+    montada (com .order(...) pra paginação estável); aqui só aplica .range()."""
+    linhas, inicio = [], 0
+    while True:
+        lote = construir_query().range(inicio, inicio + tamanho - 1).execute().data
+        linhas.extend(lote)
+        if len(lote) < tamanho:
+            return linhas
+        inicio += tamanho
 
 
 # =====================================================================
@@ -170,13 +187,17 @@ def listar_itens(template_id: str):
     )
 
 
-def adicionar_itens(template_id: str, perguntas: list[str], criticidade: str = "media", tipo_resposta: str = "sim_nao"):
+def adicionar_itens(template_id: str, perguntas: list[str], criticidade: str = "media", tipo_resposta: str = "sim_nao",
+                    pai_item_id: str | None = None, exige_foto: bool = False):
+    """`pai_item_id` cria SUB-perguntas (aparecem só quando o pai é
+    respondido "Sim"); `exige_foto` = não conclui sem foto da resposta."""
     itens_atuais = listar_itens(template_id)
     proxima_ordem = max((i["ordem"] for i in itens_atuais), default=0)
     payload = [
         {
             "template_id": template_id, "ordem": proxima_ordem + i, "pergunta": p,
             "criticidade": criticidade, "tipo_resposta": tipo_resposta,
+            "pai_item_id": pai_item_id, "exige_foto": exige_foto,
         }
         for i, p in enumerate((p.strip() for p in perguntas if p.strip()), start=1)
     ]
@@ -188,11 +209,12 @@ def remover_item(item_id: str):
     supabase.table("checklist_template_itens").delete().eq("id", item_id).execute()
 
 
-def editar_item(item_id: str, pergunta: str, criticidade: str, tipo_resposta: str = "sim_nao"):
+def editar_item(item_id: str, pergunta: str, criticidade: str, tipo_resposta: str = "sim_nao", exige_foto: bool = False):
     supabase.table("checklist_template_itens").update({
         "pergunta": pergunta.strip(),
         "criticidade": criticidade,
         "tipo_resposta": tipo_resposta,
+        "exige_foto": exige_foto,
     }).eq("id", item_id).execute()
 
 
@@ -313,11 +335,15 @@ def definir_colaborador(checklist_id: str, usuario_id: str):
     }).eq("id", checklist_id).execute()
 
 
-def concluir_checklist(checklist_id: str, supervisor_id: str, comentario: str):
+def concluir_checklist(checklist_id: str, supervisor_id: str, comentario: str, incompleto: bool = False):
+    """`incompleto=True` marca um checklist assinado com perguntas ainda
+    sem resposta (caso da assinatura no dia seguinte). Conta como
+    realizado, mas fica sinalizado."""
     supabase.table("checklists").update({
         "supervisor_id": supervisor_id,
         "comentario": comentario,
         "status": "completo",
+        "incompleto": incompleto,
         "concluido_em": "now()",
     }).eq("id", checklist_id).execute()
 
@@ -375,6 +401,14 @@ def salvar_respostas_em_lote(respostas: list[dict]) -> int:
     return len(payload)
 
 
+def remover_respostas(checklist_id: str, horario_id: str, item_ids: list[str]):
+    """Apaga respostas de itens numa ronda (sub-perguntas de uma parada que
+    foi desmarcada de "Sim" pra "Não")."""
+    if item_ids:
+        supabase.table("checklist_respostas").delete() \
+            .eq("checklist_id", checklist_id).eq("horario_id", horario_id).in_("item_id", item_ids).execute()
+
+
 # =====================================================================
 # Justificativa de atraso (ronda concluída com >1h de atraso)
 # =====================================================================
@@ -403,6 +437,96 @@ def salvar_justificativa_atraso(checklist_id: str, horario_id: str, justificativ
 # =====================================================================
 # Dashboard
 # =====================================================================
+SELECT_CHECKLIST = "*, checklist_templates(titulo, area, codigo, tipo_area), turnos(nome)"
+
+
+def buscar_checklist_por_chave(template_id: str, turno_id: int, data_ref: date) -> dict | None:
+    res = (
+        supabase.table("checklists")
+        .select(SELECT_CHECKLIST)
+        .eq("template_id", template_id)
+        .eq("turno_id", turno_id)
+        .eq("data", data_ref.isoformat())
+        .limit(1)
+        .execute()
+    )
+    return res.data[0] if res.data else None
+
+
+def checklist_anterior(template_id: str, turno_id: int, data_ref: date) -> dict | None:
+    """Checklist do TURNO ANTERIOR da mesma área (sequência do dia: C, A, B).
+    None se ainda não existe registro."""
+    turno_ant, data_ant = turno_anterior(turno_id, data_ref)
+    return buscar_checklist_por_chave(template_id, turno_ant, data_ant)
+
+
+def listar_checklists_periodo(inicio: date, fim: date, template_id: str | None = None, status: str | None = None) -> list:
+    def montar():
+        q = (
+            supabase.table("checklists")
+            .select(SELECT_CHECKLIST)
+            .gte("data", inicio.isoformat())
+            .lte("data", fim.isoformat())
+        )
+        if template_id:
+            q = q.eq("template_id", template_id)
+        if status:
+            q = q.eq("status", status)
+        return q.order("data", desc=True).order("id")
+    return _todas_as_linhas(montar)
+
+
+def listar_pendentes_assinatura(colaborador_id: str | None = None, dias: int = 30) -> list:
+    """Checklists de turnos que JÁ ACABARAM, com respostas, mas sem
+    assinatura (status em_andamento). Cada item vem com 'respondidas',
+    'esperadas' e 'faltando' pra mostrar se vai ficar incompleto.
+    Checklist aberto mas sem nenhuma resposta fica de fora — assinar em
+    branco contaria como realizado sem ter sido feito."""
+    atual = turno_e_data_referencia()
+    inicio = atual.data_referencia - timedelta(days=dias)
+
+    def montar():
+        q = (
+            supabase.table("checklists")
+            .select(SELECT_CHECKLIST)
+            .eq("status", "em_andamento")
+            .gte("data", inicio.isoformat())
+        )
+        if colaborador_id:
+            q = q.eq("colaborador_id", colaborador_id)
+        return q.order("data", desc=True).order("id")
+
+    chave_atual = chave_ordem(atual.turno_id, atual.data_referencia)
+    passados = [
+        c for c in _todas_as_linhas(montar)
+        if chave_ordem(c["turno_id"], date.fromisoformat(str(c["data"])[:10])) < chave_atual
+    ]
+
+    itens_por_template, horarios_por_chave, saida = {}, {}, []
+    for c in passados:
+        respostas = listar_respostas(c["id"])
+        if not respostas:
+            continue
+        tid = c["template_id"]
+        if tid not in itens_por_template:
+            itens_por_template[tid] = listar_itens(tid)
+        chave_h = (tid, c["turno_id"])
+        if chave_h not in horarios_por_chave:
+            horarios_por_chave[chave_h] = listar_horarios(tid, c["turno_id"])
+        itens, horarios = itens_por_template[tid], horarios_por_chave[chave_h]
+
+        sem_resposta = faltando_respostas(itens, respostas, horarios)
+        sem_foto = faltando_fotos(itens, respostas, agrupar_por_item(listar_fotos(c["id"])), horarios)
+        saida.append({
+            **c, "respondidas": len(respostas),
+            "esperadas": contar_esperadas(itens, respostas, horarios),
+            "faltando_foto": sem_foto,
+            # incompleto = falta resposta OU falta foto obrigatória
+            "faltando": sem_resposta + sem_foto,
+        })
+    return saida
+
+
 def checklists_do_dia(data_ref: date):
     res = (
         supabase.table("checklists")
@@ -413,7 +537,7 @@ def checklists_do_dia(data_ref: date):
     return res.data
 
 
-def obter_checklist_completo(checklist_id: str) -> dict | None:
+def obter_checklist_completo(checklist_id: str, com_bytes: bool = True) -> dict | None:
     """Monta o pacote inteiro de um checklist (dados + itens + horários +
     respostas + nomes de quem preencheu/assinou) pronto pra exportação
     em PDF — evita a página de relatório ter que orquestrar 6 chamadas
@@ -448,22 +572,25 @@ def obter_checklist_completo(checklist_id: str) -> dict | None:
         "horarios": horarios,
         "respostas": respostas,
         "justificativas_atraso": justificativas_atraso,
+        # com_bytes=True baixa as fotos INTEIRAS (só o PDF precisa); as telas usam miniatura.
+        "fotos": carregar_bytes(listar_fotos(checklist_id)) if com_bytes else listar_fotos(checklist_id),
         "colaborador_nome": nomes.get(checklist.get("colaborador_id"), "-"),
         "supervisor_nome": nomes.get(checklist.get("supervisor_id"), "-"),
     }
 
 
 def respostas_por_data(data_ref: date):
-    res = (
+    # Um dia tem milhares de respostas (15 checklists x 3 turnos x itens x
+    # rondas) — precisa paginar, senão o Dashboard conta só as primeiras 1000.
+    return _todas_as_linhas(lambda: (
         supabase.table("checklist_respostas")
         .select(
-            "*, checklist_template_itens(pergunta, criticidade), "
+            "checklist_id, resposta, checklist_template_itens(pergunta, criticidade), "
             "checklists!inner(id, data, checklist_templates(titulo, area))"
         )
         .eq("checklists.data", data_ref.isoformat())
-        .execute()
-    )
-    return res.data
+        .order("id")
+    ))
 
 
 # =====================================================================

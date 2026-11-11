@@ -15,7 +15,7 @@ import streamlit as st
 
 import src.preenchimento_ui as pui
 
-CHAMADAS_SALVAR = []
+CHAMADAS_SALVAR = st.session_state.setdefault("_chamadas_salvar_debug", [])  # sobrevive ao st.rerun()
 STATUS_CHECKLIST = os.environ.get("TESTE_STATUS", "em_andamento")
 
 if "ja_configurou_area" not in st.session_state:
@@ -42,23 +42,52 @@ def _fake_buscar_checklist(checklist_id):
     }
 
 
+_GATE = os.environ.get("TESTE_GATE", "0") == "1"
+# PNG 1x1 válido pra st.image nas miniaturas
+_PNG = (b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15\xc4\x89"
+        b"\x00\x00\x00\rIDATx\x9cc\xf8\xff\xff?\x00\x05\xfe\x02\xfe\xa7\x9a\xa0\xa0\x00\x00\x00\x00IEND\xaeB`\x82")
+
+
 def _fake_listar_itens(template_id):
-    return [
+    itens = [
         {"id": "item-1", "pergunta": "Pergunta 1?", "criticidade": "critica"},
         {"id": "item-2", "pergunta": "Pergunta 2?", "criticidade": "media"},
     ]
+    if _GATE:
+        itens += [
+            {"id": "gate", "pergunta": "Houve parada programada no turno?", "criticidade": "alta", "tipo_resposta": "sim_nao"},
+            {"id": "filho", "pergunta": "Local da parada está limpo?", "criticidade": "alta", "tipo_resposta": "sim_nao",
+             "pai_item_id": "gate", "exige_foto": True},
+        ]
+    return itens
 
 
 def _fake_listar_horarios(template_id, turno_id):
     return [{"id": "horario-1", "horario": "07:30:00"}]
 
 
+def _db_respostas():
+    return st.session_state.setdefault("_db_respostas", {})
+
+
 def _fake_listar_respostas(checklist_id):
-    return {}
+    return dict(_db_respostas()) if _GATE else {}
+
+
+def _fake_listar_fotos(checklist_id):
+    return list(st.session_state.get("_db_fotos", []))
+
+
+def _fake_remover_respostas(checklist_id, horario_id, item_ids):
+    for i in item_ids:
+        _db_respostas().pop((i, horario_id), None)
 
 
 def _fake_salvar_respostas_em_lote(respostas):
     CHAMADAS_SALVAR.append(list(respostas))
+    if _GATE:
+        for r in respostas:
+            _db_respostas()[(r["item_id"], r["horario_id"])] = {"resposta": r["resposta"], "observacao": r["observacao"]}
     return len(respostas)
 
 
@@ -93,7 +122,7 @@ def _fake_concluir_checklist(*a, **k):
     pass
 
 
-def _fake_obter_checklist_completo(checklist_id):
+def _fake_obter_checklist_completo(checklist_id, com_bytes=True):
     return {
         "checklist": _fake_buscar_checklist(checklist_id),
         "template": {"titulo": "Checklist Teste", "area": "Área Teste", "codigo": "COD001"},
@@ -124,6 +153,11 @@ pui.listar_horarios = _fake_listar_horarios
 pui.listar_respostas = _fake_listar_respostas
 pui.salvar_respostas_em_lote = _fake_salvar_respostas_em_lote
 pui.esta_atrasado = _fake_esta_atrasado
+pui.listar_fotos = _fake_listar_fotos
+pui.remover_respostas = _fake_remover_respostas
+pui.remover_fotos_de_itens = lambda *a, **k: 0
+pui.baixar_miniatura = lambda caminho: _PNG
+pui.checklist_anterior = lambda *a, **k: None
 pui.listar_justificativas_atraso = _fake_listar_justificativas_atraso
 pui.salvar_justificativa_atraso = _fake_salvar_justificativa_atraso
 pui.nomes_usuarios = _fake_nomes_usuarios
@@ -142,5 +176,4 @@ template_fake = {"id": "template-1", "area": "Área Teste", "codigo": "COD001"}
 
 pui.renderizar_preenchimento(usuario_fake, template_fake)
 
-st.session_state["_chamadas_salvar_debug"] = CHAMADAS_SALVAR
 st.session_state["_justificativas_salvas_debug"] = JUSTIFICATIVAS_SALVAS

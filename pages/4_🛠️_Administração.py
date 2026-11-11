@@ -4,6 +4,8 @@ from datetime import time
 
 import streamlit as st
 
+from src.fotos import remover_fotos_antigas, uso_armazenamento
+from src.itens import separar_itens
 from src.auth import alternar_status, atualizar_papel_usuario, criar_usuario, exigir_login, resetar_senha
 from src.models import (
     COR_PADRAO_GUARARAPES,
@@ -55,8 +57,9 @@ if not usuario.pode_gerenciar_sistema:
     st.stop()
 
 st.title("🛠️ Administração")
-tab_visual, tab_usuarios, tab_equipamentos, tab_novo_checklist, tab_checklists = st.tabs(
-    ["🎨 Identidade Visual", "👤 Usuários", "🔧 Áreas/Equipamentos", "➕ Novo Checklist", "📋 Checklists Cadastrados"]
+tab_visual, tab_usuarios, tab_equipamentos, tab_novo_checklist, tab_checklists, tab_armazenamento = st.tabs(
+    ["🎨 Identidade Visual", "👤 Usuários", "🔧 Áreas/Equipamentos", "➕ Novo Checklist",
+     "📋 Checklists Cadastrados", "💾 Armazenamento"]
 )
 
 NIVEIS = {
@@ -551,20 +554,33 @@ with tab_checklists:
             # Itens de inspeção — editável (pergunta + criticidade)
             # -----------------------------------------------------------
             st.markdown("**Itens de inspeção**")
+            st.caption(
+                "**➕ Sub** cadastra sub-perguntas: elas só aparecem quando a pergunta for respondida "
+                "**Sim** (ex.: \"Houve parada programada?\" → perguntas da parada, com foto obrigatória)."
+            )
             itens = listar_itens(t["id"])
-            for item in itens:
-                chave_edit_i = f"editando_item_{item['id']}"
+            topo, filhos_por_pai = separar_itens(itens)
 
+            def _linha_item(item, filho=False):
+                chave_edit_i = f"editando_item_{item['id']}"
                 if not st.session_state.get(chave_edit_i, False):
-                    c1, c2, c3 = st.columns([5, 1, 1])
-                    selo_tipo = " 📝 texto livre" if item.get("tipo_resposta") == "texto_livre" else ""
-                    c1.write(f"**[{item['criticidade']}]** {item['pergunta']}{selo_tipo}")
+                    c1, c2, c3, c4 = st.columns([5, 1, 1, 1])
+                    selos = ""
+                    if item.get("tipo_resposta") == "texto_livre":
+                        selos += " 📝 texto livre"
+                    if item.get("exige_foto"):
+                        selos += " 📷 foto obrigatória"
+                    c1.write(f"{'↳ ' if filho else ''}**[{item['criticidade']}]** {item['pergunta']}{selos}")
                     if c2.button("Editar", key=f"edit_i_{item['id']}"):
                         st.session_state[chave_edit_i] = True
                         st.rerun()
                     if c3.button("Remover", key=f"rm_{item['id']}"):
                         remover_item(item["id"])
                         st.rerun()
+                    if not filho and item.get("tipo_resposta", "sim_nao") == "sim_nao":
+                        if c4.button("➕ Sub", key=f"sub_{item['id']}"):
+                            st.session_state[f"add_sub_{item['id']}"] = not st.session_state.get(f"add_sub_{item['id']}", False)
+                            st.rerun()
                 else:
                     with st.form(f"form_edit_item_{item['id']}"):
                         nova_pergunta = st.text_area("Pergunta", value=item["pergunta"])
@@ -579,6 +595,10 @@ with tab_checklists:
                             format_func=lambda v: {"sim_nao": "Sim / Não / N-A", "texto_livre": "Texto livre"}[v],
                             help="Ex. texto livre: \"Qual produto está sendo produzido?\"",
                         )
+                        nova_exige_foto = st.checkbox(
+                            "Exigir foto (não conclui o checklist sem foto desta pergunta)",
+                            value=bool(item.get("exige_foto")),
+                        )
                         col_salvar, col_cancelar = st.columns(2)
                         salvar_i = col_salvar.form_submit_button("Salvar", type="primary")
                         cancelar_i = col_cancelar.form_submit_button("Cancelar")
@@ -586,11 +606,38 @@ with tab_checklists:
                         if not nova_pergunta.strip():
                             st.error("A pergunta não pode ficar vazia.")
                         else:
-                            editar_item(item["id"], nova_pergunta, nova_criticidade, novo_tipo)
+                            editar_item(item["id"], nova_pergunta, nova_criticidade, novo_tipo, nova_exige_foto)
                             st.session_state[chave_edit_i] = False
                             st.rerun()
                     if cancelar_i:
                         st.session_state[chave_edit_i] = False
+                        st.rerun()
+
+            for item in topo:
+                _linha_item(item)
+                for filha in filhos_por_pai.get(item["id"], []):
+                    _linha_item(filha, filho=True)
+                if st.session_state.get(f"add_sub_{item['id']}", False):
+                    with st.form(f"form_add_sub_{item['id']}"):
+                        st.caption(f"Sub-perguntas de: **{item['pergunta']}**")
+                        texto_sub = st.text_area("Uma pergunta por linha", height=140, key=f"txt_sub_{item['id']}")
+                        exige_sub = st.checkbox("Exigir foto em cada uma", value=True, key=f"foto_sub_{item['id']}")
+                        col_a, col_b = st.columns(2)
+                        ok_sub = col_a.form_submit_button("Adicionar sub-perguntas", type="primary")
+                        fechar_sub = col_b.form_submit_button("Fechar")
+                    if ok_sub:
+                        perguntas_sub = [l for l in texto_sub.splitlines() if l.strip()]
+                        if not perguntas_sub:
+                            st.error("Escreva pelo menos uma pergunta.")
+                        else:
+                            adicionar_itens(
+                                t["id"], perguntas_sub, item["criticidade"], "sim_nao",
+                                pai_item_id=item["id"], exige_foto=exige_sub,
+                            )
+                            st.session_state[f"add_sub_{item['id']}"] = False
+                            st.rerun()
+                    if fechar_sub:
+                        st.session_state[f"add_sub_{item['id']}"] = False
                         st.rerun()
 
             st.divider()
@@ -602,3 +649,41 @@ with tab_checklists:
                 if st.button("Reativar checklist", key=f"react_{t['id']}"):
                     reativar_template(t["id"])
                     st.rerun()
+
+
+# =====================================================================
+# TAB 5 — Armazenamento (plano gratuito do Supabase: 500 MB de banco, 1 GB de fotos)
+# =====================================================================
+with tab_armazenamento:
+    LIMITE_BANCO_MB, LIMITE_FOTOS_MB = 500, 1024
+    st.subheader("Uso do plano gratuito do Supabase")
+    uso = uso_armazenamento()
+
+    def _barra(rotulo: str, valor, limite: int):
+        if valor is None:
+            st.caption(f"{rotulo}: indisponível (rode o SQL migration_fotos_historico.sql no Supabase).")
+            return
+        pct = min(valor / limite, 1.0)
+        st.progress(pct, text=f"{rotulo}: {valor:.0f} MB de {limite} MB ({pct * 100:.0f}%)")
+        if pct >= 0.9:
+            st.error(f"{rotulo} quase cheio — apague dados/fotos antigos agora.")
+        elif pct >= 0.7:
+            st.warning(f"{rotulo} passou de 70% do limite.")
+
+    _barra("Banco de dados", uso["banco_mb"], LIMITE_BANCO_MB)
+    _barra("Fotos (Storage)", uso["fotos_mb"], LIMITE_FOTOS_MB)
+    if uso["fotos_qtd"] is not None:
+        st.caption(f"{uso['fotos_qtd']} foto(s) guardada(s). Cada foto é reduzida pra ~100 KB ao enviar, no máx. 3 por pergunta.")
+
+    st.divider()
+    st.subheader("🗑️ Apagar fotos antigas")
+    st.caption(
+        "Libera espaço do Storage. As respostas, comentários, PDFs já baixados e relatórios continuam — "
+        "só as fotos mais velhas que o prazo somem (e deixam de aparecer no histórico e em PDFs novos)."
+    )
+    dias_apagar = st.number_input("Apagar fotos com mais de (dias)", min_value=30, max_value=3650, value=90, step=15)
+    confirma_apagar = st.checkbox("Entendo que as fotos apagadas não podem ser recuperadas.")
+    if st.button("Apagar fotos antigas", disabled=not confirma_apagar, type="primary"):
+        apagadas = remover_fotos_antigas(int(dias_apagar))
+        st.success(f"{apagadas} foto(s) apagada(s).")
+        st.rerun()
