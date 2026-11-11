@@ -175,16 +175,23 @@ def test_ronda_atrasada_com_justificativa_tambem_permite_concluir(monkeypatch):
     assert "area" not in at.query_params
 
 
-def test_turno_anterior_so_busca_quando_o_toggle_e_ligado(monkeypatch):
+def test_turnos_anteriores_so_buscam_quando_o_toggle_e_ligado_e_mostram_dois(monkeypatch):
+    from datetime import date
     monkeypatch.setenv("TESTE_STATUS", "em_andamento")
     at = AppTest.from_file(APP, default_timeout=20)
     at.run()
-    assert not any("Sem registro do turno anterior" in el.value for el in at.caption)
+    assert not any("Sem registro desse turno" in el.value for el in at.caption)
+    assert "_anterior_chamadas" not in at.session_state          # nada consultado antes de ligar
 
     at.toggle[0].set_value(True)
     at.run()
     assert not at.exception
-    assert any("Sem registro do turno anterior" in el.value for el in at.caption)
+    assert sum("Sem registro desse turno" in el.value for el in at.caption) == 2     # 2 turnos mostrados
+    # fixture: turno atual = A (Manhã) de 31/08. Anterior = C (31/08); o antes dele = B de 30/08.
+    chamadas = at.session_state["_anterior_chamadas"]
+    assert [(c[1], c[2]) for c in chamadas] == [(1, date(2026, 8, 31)), (3, date(2026, 8, 31))]
+    titulos = " ".join(m.value for m in at.markdown)
+    assert "Turno C Noite" in titulos and "Turno B Tarde" in titulos
 
 
 # ----------------------------------------------------------------- parada (pai Sim -> filhas com foto)

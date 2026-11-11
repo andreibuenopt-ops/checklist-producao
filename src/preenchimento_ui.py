@@ -48,7 +48,9 @@ from src.models import (
     salvar_justificativa_atraso,
     salvar_respostas_em_lote,
 )
-from src.turnos import esta_atrasado, ronda_vigente, turno_e_data_referencia
+from src.turnos import (
+    LETRA_TURNO, NOME_TURNO, esta_atrasado, ronda_vigente, turno_anterior, turno_e_data_referencia,
+)
 
 
 def renderizar_preenchimento(usuario, template: dict):
@@ -113,14 +115,22 @@ def renderizar_preenchimento(usuario, template: dict):
     for tipo_msg, texto_msg in st.session_state.pop(chave_flash, []):
         getattr(st, tipo_msg)(texto_msg)
 
-    # Passagem de turno: o que aconteceu no turno anterior desta área.
-    # toggle (e não expander) pra só buscar no banco quando abrir.
-    if st.toggle("📜 Ver o que aconteceu no turno anterior", key=f"ver_ant_{checklist['id']}"):
-        anterior = checklist_anterior(template["id"], turno.turno_id, turno.data_referencia)
-        if anterior:
-            renderizar_checklist_somente_leitura(obter_checklist_completo(anterior["id"], com_bytes=False), resumido=True)
-        else:
-            st.caption("Sem registro do turno anterior para esta área.")
+    # Passagem de turno: o que aconteceu nos 2 turnos anteriores desta área
+    # (mais recente primeiro). toggle (e não expander) pra só buscar no
+    # banco quando abrir.
+    if st.toggle("📜 Ver o que aconteceu nos 2 turnos anteriores", key=f"ver_ant_{checklist['id']}"):
+        cursor_turno, cursor_data = turno.turno_id, turno.data_referencia
+        for _ in range(2):
+            anterior = checklist_anterior(template["id"], cursor_turno, cursor_data)
+            cursor_turno, cursor_data = turno_anterior(cursor_turno, cursor_data)   # o turno que acabou de ser consultado
+            st.markdown(
+                f"**Turno {LETRA_TURNO[cursor_turno]} {NOME_TURNO[cursor_turno]} · "
+                f"{cursor_data.strftime('%d/%m/%Y')}**"
+            )
+            if anterior:
+                renderizar_checklist_somente_leitura(obter_checklist_completo(anterior["id"], com_bytes=False), resumido=True)
+            else:
+                st.caption("Sem registro desse turno para esta área.")
 
     # Perguntas com SUB-perguntas (ex.: "Houve parada programada?"): o "Sim"
     # abre as filhas naquela ronda. Ver src/itens.py.

@@ -348,7 +348,7 @@ pertence a **segunda-feira**. Toda data gravada em `checklists.data` é o *dia d
 enviar; ~100–200 KB por foto. O plano free do Supabase tem 1 GB de Storage: acompanhe em Storage → `checklist-fotos`.
 As fotos aparecem no histórico e no PDF do checklist.
 
-**Histórico** (`pages/8_📜_Histórico.py`, todos os papéis, somente leitura) e o toggle "Ver o que aconteceu no turno anterior"
+**Histórico** (`pages/8_📜_Histórico.py`, todos os papéis, somente leitura) e o toggle "Ver o que aconteceu nos 2 turnos anteriores"
 dentro do preenchimento (`models.checklist_anterior`, sequência C → A → B).
 
 **Assinatura no dia seguinte** — aba "Pendentes de assinatura" do Histórico. O checklist continua valendo no dia em que foi
