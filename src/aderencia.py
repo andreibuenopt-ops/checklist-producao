@@ -146,12 +146,17 @@ def montar_relatorio(inicio: date, fim: date) -> dict:
     )
     atrasos = justificativas_periodo(inicio, fim)
 
+    from src.paradas import TIPOS_CURTOS, listar_paradas_periodo
+    paradas = listar_paradas_periodo(inicio, fim, apenas_concluidas=True)
+    por_tipo = Counter(p["tipo"] for p in paradas)
+
     return {
         "inicio": inicio, "fim": fim, "linhas": linhas,
         "geral": somar(linhas), "por_turno": por_turno(linhas),
         "por_checklist": por_checklist(linhas),
         "ranking": ranking_esquecimentos(linhas),
         "total_nao": len(nao), "total_atrasos": len(atrasos),
+        "paradas": {"total": len(paradas), "por_tipo": {TIPOS_CURTOS[t]: por_tipo.get(t, 0) for t in TIPOS_CURTOS}},
         "itens_mais_nao": [
             {"area": a, "pergunta": p, "qtd": q} for (a, p), q in itens_nao.most_common(10)
         ],

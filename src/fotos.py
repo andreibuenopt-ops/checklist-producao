@@ -77,28 +77,47 @@ def caminho_miniatura(caminho: str) -> str:
     return caminho[:-4] + "_t.jpg"
 
 
-def enviar_foto(checklist_id: str, item_id: str, horario_id: str, conteudo: bytes, usuario_id: str) -> dict:
-    """Comprime, sobe a foto + miniatura e registra no banco."""
+def _subir(caminho: str, conteudo: bytes, registrar):
+    """Comprime, sobe foto + miniatura e chama `registrar()` (grava no banco).
+    Se algo falhar depois do upload, apaga os arquivos (nada de órfão ocupando espaço)."""
     jpeg = comprimir_imagem(conteudo)
     mini = criar_miniatura(jpeg)
-    caminho = f"{checklist_id}/{item_id}_{horario_id}_{uuid.uuid4().hex[:12]}.jpg"
     opcoes = {"content-type": "image/jpeg"}
     bucket = supabase.storage.from_(BUCKET)
     bucket.upload(caminho, jpeg, opcoes)
     try:
         bucket.upload(caminho_miniatura(caminho), mini, opcoes)
-        res = supabase.table("checklist_fotos").insert({
-            "checklist_id": checklist_id, "item_id": item_id, "horario_id": horario_id,
-            "caminho": caminho, "enviado_por": usuario_id,
-        }).execute()
+        return registrar()
     except Exception:
-        # não deixa arquivo órfão ocupando espaço
         try:
             bucket.remove([caminho, caminho_miniatura(caminho)])
         except Exception:
             pass
         raise
-    return res.data[0]
+
+
+def enviar_foto(checklist_id: str, item_id: str, horario_id: str, conteudo: bytes, usuario_id: str) -> dict:
+    """Foto de um item de checklist: comprime, sobe foto + miniatura e registra."""
+    caminho = f"{checklist_id}/{item_id}_{horario_id}_{uuid.uuid4().hex[:12]}.jpg"
+    return _subir(caminho, conteudo, lambda: supabase.table("checklist_fotos").insert({
+        "checklist_id": checklist_id, "item_id": item_id, "horario_id": horario_id,
+        "caminho": caminho, "enviado_por": usuario_id,
+    }).execute().data[0])
+
+
+def enviar_foto_parada(parada_id: str, item_id: str, conteudo: bytes, usuario_id: str) -> dict:
+    """Foto de uma pergunta de checklist de PARADA (mesmo bucket, pasta paradas/)."""
+    caminho = f"paradas/{parada_id}/{item_id}_{uuid.uuid4().hex[:12]}.jpg"
+    return _subir(caminho, conteudo, lambda: supabase.table("paradas_fotos").insert({
+        "parada_id": parada_id, "item_id": item_id, "caminho": caminho, "enviado_por": usuario_id,
+    }).execute().data[0])
+
+
+def listar_fotos_parada(parada_id: str) -> list[dict]:
+    return (
+        supabase.table("paradas_fotos").select("id, item_id, caminho, enviado_em")
+        .eq("parada_id", parada_id).order("enviado_em").execute().data
+    )
 
 
 def listar_fotos(checklist_id: str) -> list[dict]:
@@ -147,7 +166,7 @@ def carregar_bytes(fotos: list[dict]) -> list[dict]:
 # ---------------------------------------------------------------------
 # Limpeza e uso de espaço
 # ---------------------------------------------------------------------
-def remover_fotos(fotos: list[dict]) -> int:
+def remover_fotos(fotos: list[dict], tabela: str = "checklist_fotos") -> int:
     """Apaga do Storage (foto + miniatura) e do banco. `fotos` = linhas
     com 'id' e 'caminho'."""
     if not fotos:
@@ -159,19 +178,22 @@ def remover_fotos(fotos: list[dict]) -> int:
         supabase.storage.from_(BUCKET).remove(caminhos[i:i + 100])
     ids = [f["id"] for f in fotos]
     for i in range(0, len(ids), 100):
-        supabase.table("checklist_fotos").delete().in_("id", ids[i:i + 100]).execute()
+        supabase.table(tabela).delete().in_("id", ids[i:i + 100]).execute()
     return len(fotos)
 
 
 def remover_fotos_antigas(dias: int) -> int:
-    """Apaga fotos enviadas há mais de `dias` dias. Devolve quantas."""
+    """Apaga fotos (de checklists e de paradas) enviadas há mais de `dias`
+    dias. Devolve quantas."""
     corte = (agora_local() - timedelta(days=dias)).isoformat()
     total = 0
-    while True:
-        lote = supabase.table("checklist_fotos").select("id, caminho").lt("enviado_em", corte).limit(200).execute().data
-        if not lote:
-            return total
-        total += remover_fotos(lote)
+    for tabela in ("checklist_fotos", "paradas_fotos"):
+        while True:
+            lote = supabase.table(tabela).select("id, caminho").lt("enviado_em", corte).limit(200).execute().data
+            if not lote:
+                break
+            total += remover_fotos(lote, tabela)
+    return total
 
 
 def remover_fotos_de_itens(checklist_id: str, horario_id: str, item_ids: list[str]) -> int:
@@ -197,7 +219,10 @@ def uso_armazenamento() -> dict:
         except Exception:
             pass
     try:
-        uso["fotos_qtd"] = supabase.table("checklist_fotos").select("id", count="exact").limit(1).execute().count
+        uso["fotos_qtd"] = sum(
+            supabase.table(t).select("id", count="exact").limit(1).execute().count or 0
+            for t in ("checklist_fotos", "paradas_fotos")
+        )
     except Exception:
         pass
     return uso

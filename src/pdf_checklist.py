@@ -90,8 +90,10 @@ def gerar_pdf_checklist(dados: dict, logo_bytes: bytes | None = None) -> bytes:
             + (' <font color="#aa3333"><b>(assinado INCOMPLETO)</b></font>' if checklist.get("incompleto") else ""),
             normal),
          Paragraph(f"<b>Concluído em:</b> {_formatar_datahora(checklist.get('concluido_em'))}", normal)],
-        [Paragraph(f"<b>Colaborador:</b> {dados.get('colaborador_nome', '-')}", normal),
-         Paragraph(f"<b>Assinado por:</b> {dados.get('supervisor_nome', '-')}", normal)],
+        [Paragraph(f"<b>Colaborador:</b> {dados.get('colaborador_nome', '-')}"
+                   + (f" (Turma {dados['colaborador_turma']})" if dados.get("colaborador_turma") else ""), normal),
+         Paragraph(f"<b>Assinado por:</b> {dados.get('supervisor_nome', '-')}"
+                   + (f" (Turma {dados['supervisor_turma']})" if dados.get("supervisor_turma") else ""), normal)],
     ]
     tabela_cabecalho = Table(cabecalho, colWidths=[LARGURA_UTIL / 2, LARGURA_UTIL / 2])
     tabela_cabecalho.setStyle(TableStyle([

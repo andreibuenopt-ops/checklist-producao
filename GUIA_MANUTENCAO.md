@@ -340,7 +340,9 @@ pertence a **segunda-feira**. Toda data gravada em `checklists.data` é o *dia d
 1. `sql/migration_fotos_historico.sql` (tabela de fotos, bucket privado `checklist-fotos`, coluna `incompleto`,
    funções de medição de espaço, remove índice redundante)
 2. `sql/migration_paradas_supervisor.sql` (sub-perguntas + as 3 perguntas de parada no Supervisor de Turno)
-3. `sql/migration_dia_producao_noite.sql` — **uma vez só** (tem trava). Empurra 1 dia os registros antigos de Noite.
+3. `sql/migration_turma_usuario.sql` (turma fixa do colaborador)
+   `sql/migration_paradas_linha.sql` (tabelas do checklist de parada de linha)
+4. `sql/migration_dia_producao_noite.sql` — **uma vez só** (tem trava). Empurra 1 dia os registros antigos de Noite.
    Rodar junto com a subida do código, de preferência na virada de turno.
 4. Subir o código e dar Reboot.
 
@@ -375,3 +377,24 @@ botão **➕ Sub** ao lado da pergunta. Atenção: no Supervisor de Turno as per
 - Administração → **💾 Armazenamento**: barras de uso (banco e fotos) e "Apagar fotos antigas".
 - O banco cresce ~2 MB por dia de uso (milhares de respostas/dia). Acompanhe a barra; quando passar de ~70%
   é hora de arquivar dados antigos.
+
+### Turma fixa do colaborador e escolha do turno na hora de preencher
+- **Turma (A, B, C, D)** é uma coluna de `usuarios` (`sql/migration_turma_usuario.sql`). É a turma em que a pessoa trabalha,
+  independente do horário em que ela abre o checklist. Definida no autocadastro (obrigatória), em Administração → Usuários
+  e, a qualquer momento, no menu lateral ("Minha turma"). Aparece no Histórico (e no filtro "Turma"), no Dashboard e no PDF.
+- **Atenção:** `usuarios` tem leitura liberada **coluna por coluna** (o hash da senha nunca sai). Toda coluna nova precisa de
+  `grant select (coluna) on usuarios to anon, authenticated` — já está na migration e no `schema.sql`.
+- **Seletor "Turno deste checklist"** (`src/turno_ui.py`): o sistema sugere o turno pelo relógio e a pessoa pode trocar para o
+  turno **anterior** ou o **próximo** (cobre quem chega antes da virada ou termina depois). Vale para os checklists e para o
+  Ecoresinator. Checklists já gravados ficam no turno em que foram abertos.
+- O código tolera o banco sem a coluna `turma` (login e listas continuam), mas o autocadastro com turma só funciona depois da migration.
+
+### Parada de linha (3 checklists: programada, saída de finos, corretiva)
+`pages/10_🛑_Parada_de_Linha.py` (todos os papéis). Fluxo: "Houve parada?" Sim > tipo > **Abrir checklist de parada**. Cada parada é um
+**evento**: abre um checklist novo (pode haver várias no turno) e fica de fora do motor por ronda — não entra na aderência.
+- Tabelas: `paradas_itens` (perguntas por tipo), `paradas`, `paradas_respostas`, `paradas_fotos` (`sql/migration_paradas_linha.sql`).
+- **As perguntas se cadastram em Administração > Paradas** (por tipo; "Exigir foto" por pergunta). Remover só desativa.
+- Foto por pergunta (mesmo bucket, pasta `paradas/`, mesma compressão/miniatura); sem as fotos obrigatórias não conclui.
+- Histórico: aba **Paradas** (filtro por período e tipo, PDF sob demanda). Relatório mensal: contagem de paradas por tipo.
+- Código em `src/paradas.py` (dados/regras), `src/paradas_ui.py` (tela), `src/pdf_parada.py`. As 3 perguntas de parada do
+  Supervisor de Turno continuam existindo, independentes desta página.

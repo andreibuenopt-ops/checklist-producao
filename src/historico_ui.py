@@ -53,8 +53,10 @@ def renderizar_checklist_somente_leitura(dados: dict, resumido: bool = False):
         st.info("Ainda **não assinado** (em andamento).")
 
     c1, c2, c3 = st.columns(3)
-    c1.metric("Colaborador", dados.get("colaborador_nome", "-"))
-    c2.metric("Assinado por", dados.get("supervisor_nome", "-"))
+    turma_col = dados.get("colaborador_turma")
+    c1.metric("Colaborador", dados.get("colaborador_nome", "-") + (f" (Turma {turma_col})" if turma_col else ""))
+    turma_sup = dados.get("supervisor_turma")
+    c2.metric("Assinado por", dados.get("supervisor_nome", "-") + (f" (Turma {turma_sup})" if turma_sup else ""))
     c3.metric("Assinado em", formatar_datahora_local(ck.get("concluido_em")))
 
     contagem = {"Sim": 0, "Não": 0, "N/A": 0}

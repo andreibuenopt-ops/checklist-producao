@@ -17,7 +17,7 @@ from src.ecoresinator import (
 )
 from src.models import nomes_usuarios, obter_logo_bytes_com_fallback
 from src.pdf_ecoresinator import gerar_pdf_ecoresinator
-from src.turnos import turno_e_data_referencia
+from src.turno_ui import escolher_turno
 
 ROTULOS_BICO = {
     "numero": "Bico", "vazao_lmin": "Vazão (L/min)", "eficiencia_pct": "Eficiência (%)",
@@ -47,7 +47,7 @@ def renderizar_ecoresinator(usuario):
     st.title("🧪 Rotina de Inspeção — Ecoresinator")
     st.caption("Cozinha de cola · deve ser feita em todos os turnos, logo na primeira hora.")
 
-    turno = turno_e_data_referencia()
+    turno = escolher_turno("ecoresinator")
     st.caption(f"Turno **{turno.nome}** · Data de referência **{turno.data_referencia.strftime('%d/%m/%Y')}**")
 
     checklist = obter_ou_criar_ecoresinator(turno.turno_id, turno.data_referencia)

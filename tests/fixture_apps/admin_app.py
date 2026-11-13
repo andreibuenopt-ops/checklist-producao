@@ -11,6 +11,7 @@ import streamlit as st
 import src.auth as auth_mod
 import src.fotos as fotos_mod
 import src.models as models_mod
+import src.paradas as paradas_mod
 
 # Qualquer consulta ao banco devolve "nada" (listas vazias), menos o que for definido abaixo.
 for modulo in (auth_mod, models_mod, fotos_mod):
@@ -42,6 +43,8 @@ models_mod.listar_itens = lambda tid: [PAI, FILHA]
 models_mod.listar_horarios_todos_turnos = lambda tid: []
 models_mod.listar_turnos = lambda: [{"id": 1, "nome": "Manhã"}, {"id": 2, "nome": "Tarde"}, {"id": 3, "nome": "Noite"}]
 models_mod.listar_setores = lambda: [{"id": 10, "nome": "Supervisão de Turno", "ordem": 10}]
+paradas_mod.listar_itens_parada = lambda tipo, apenas_ativos=True: []
+paradas_mod.adicionar_itens_parada = lambda tipo, perguntas, exige_foto=True: CHAMADAS.append(("adicionar_itens_parada", (tipo, perguntas, exige_foto)))
 models_mod.adicionar_itens = lambda *a, **k: CHAMADAS.append(("adicionar_itens", a, k))
 fotos_mod.uso_armazenamento = lambda: {"banco_mb": 380.0, "fotos_mb": 100.0, "fotos_qtd": 42}
 fotos_mod.remover_fotos_antigas = lambda dias: CHAMADAS.append(("apagar_fotos", dias)) or 7

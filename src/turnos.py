@@ -80,6 +80,29 @@ def turno_e_data_referencia() -> Turno:
     return Turno(3, "Noite", hoje)
 
 
+def turno_proximo(turno_id: int, data_ref: date) -> tuple[int, date]:
+    """(turno_id, dia de produção) do turno imediatamente seguinte."""
+    if turno_id == 3:      # C -> A (mesmo dia de produção)
+        return 1, data_ref
+    if turno_id == 1:      # A -> B (mesmo dia)
+        return 2, data_ref
+    return 3, data_ref + timedelta(days=1)   # B -> C, que pertence ao dia SEGUINTE
+
+
+def turnos_selecionaveis(atual: "Turno") -> list:
+    """Os 3 turnos que a pessoa pode escolher na hora de preencher:
+    [anterior, atual, próximo]. Cobre quem chega antes da virada (próximo)
+    e quem termina depois dela (anterior) — o sistema só adivinha pelo
+    relógio, a pessoa corrige."""
+    ant_id, ant_data = turno_anterior(atual.turno_id, atual.data_referencia)
+    prox_id, prox_data = turno_proximo(atual.turno_id, atual.data_referencia)
+    return [
+        Turno(ant_id, NOME_TURNO[ant_id], ant_data),
+        atual,
+        Turno(prox_id, NOME_TURNO[prox_id], prox_data),
+    ]
+
+
 def chave_ordem(turno_id: int, data_ref: date) -> tuple:
     """Chave pra comparar 'qual turno veio antes' dentro da linha do tempo
     de produção: (dia de produção, posição no dia — C, A, B)."""

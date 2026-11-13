@@ -10,6 +10,8 @@ import streamlit as st
 
 import src.auth as auth_mod
 import src.models as models_mod
+import src.paradas as paradas_mod
+import src.sidebar as sidebar_mod
 
 PAPEL = os.environ.get("TESTE_PAPEL", "producao")
 ASSINADOS = st.session_state.setdefault("_assinados_debug", [])  # sobrevive ao st.rerun()
@@ -41,11 +43,14 @@ def _completo(checklist_id, com_bytes=True):
         "horarios": [{"id": "h1", "horario": "15:00:00"}],
         "respostas": {("i1", "h1"): {"resposta": "Não", "observacao": "Trocar amanhã"}},
         "justificativas_atraso": {}, "fotos": [],
-        "colaborador_nome": "Fulano", "supervisor_nome": "Beltrano",
+        "colaborador_nome": "Karoline Raizel", "colaborador_turma": "A", "supervisor_nome": "Beltrano",
     }
 
 
 auth_mod.exigir_login = _usuario
+paradas_mod.listar_paradas_periodo = lambda *a, **k: []
+sidebar_mod.obter_logo_url_com_fallback = lambda: None   # sidebar já foi importado: troca a referência dele
+sidebar_mod.atualizar_turma_usuario = lambda uid, turma: st.session_state.setdefault("_turmas_salvas", []).append((uid, turma))
 models_mod.obter_cor_primaria = lambda: "#667f38"
 models_mod.obter_logo_url_com_fallback = lambda: None
 models_mod.obter_logo_bytes_com_fallback = lambda: None
@@ -53,6 +58,7 @@ models_mod.listar_templates = lambda apenas_ativos=True: [
     {"id": "t1", "area": "Área das Serras", "codigo": "FR-CD-M2-001"}]
 models_mod.listar_checklists_periodo = lambda ini, fim, template_id=None, status=None: [CK_OK, CK]
 models_mod.obter_checklist_completo = _completo
+models_mod.dados_usuarios = lambda ids: {"u1": {"nome": "Karoline Raizel", "turma": "A"}}
 models_mod.listar_pendentes_assinatura = lambda colaborador_id=None, dias=30: [CK]
 models_mod.concluir_checklist = lambda cid, uid, com, incompleto=False: ASSINADOS.append((cid, uid, incompleto))
 

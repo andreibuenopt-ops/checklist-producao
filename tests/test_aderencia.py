@@ -75,6 +75,9 @@ def test_montar_relatorio_roda_de_ponta_a_ponta(monkeypatch):
         {"checklist_template_itens": {"pergunta": "Correia com danos?"},
          "checklists": {"checklist_templates": {"area": "Área das Serras"}}}] * 2)
     monkeypatch.setattr(models, "justificativas_periodo", lambda ini, fim: [{"id": 1}])
+    import src.paradas as paradas_mod
+    monkeypatch.setattr(paradas_mod, "listar_paradas_periodo", lambda ini, fim, tipo=None, apenas_concluidas=False: [
+        {"tipo": "corretiva"}, {"tipo": "corretiva"}, {"tipo": "programada"}])
     monkeypatch.setattr(eco, "ecoresinator_primeiro_dia", lambda: D1)
     monkeypatch.setattr(eco, "ecoresinator_periodo", lambda ini, fim: [
         {"turno_id": 3, "data": D1.isoformat(), "status": "completo"}])
@@ -85,6 +88,7 @@ def test_montar_relatorio_roda_de_ponta_a_ponta(monkeypatch):
     assert rel["total_nao"] == 2 and rel["total_atrasos"] == 1
     assert rel["itens_mais_nao"] == [{"area": "Área das Serras", "pergunta": "Correia com danos?", "qtd": 2}]
     assert rel["geral"]["realizados"] == 2                                     # 1 checklist + 1 Ecoresinator
+    assert rel["paradas"] == {"total": 3, "por_tipo": {"Programada": 1, "Saída de finos": 0, "Corretiva": 2}}
 
 
 def test_consultas_do_relatorio_executam_sem_erro(monkeypatch):

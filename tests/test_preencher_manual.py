@@ -23,4 +23,4 @@ def test_producao_sem_qr_nao_ve_selectbox_nenhum():
     at.run()
 
     assert not at.exception
-    assert len(at.selectbox) == 0
+    assert len(at.main.selectbox) == 0      # (o sidebar tem o seletor "Minha turma")

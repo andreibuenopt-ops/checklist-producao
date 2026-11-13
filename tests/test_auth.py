@@ -10,7 +10,9 @@ from streamlit.testing.v1 import AppTest
 APP = str(Path(__file__).resolve().parent / "fixture_apps" / "cadastro_app.py")
 
 
-def _preencher_cadastro(tab, nome, email, matricula, senha, confirmar=None):
+def _preencher_cadastro(tab, nome, email, matricula, senha, confirmar=None, turma="B"):
+    if turma:
+        tab.selectbox[0].set_value(turma)      # turma é obrigatória no autocadastro
     inputs = tab.text_input
     inputs[0].set_value(nome)
     inputs[1].set_value(email)
@@ -107,3 +109,18 @@ def test_login_com_senha_errada_nao_entra(monkeypatch):
 
     assert not any("LOGADO" in el.value for el in at.markdown)
     assert any("Senha incorreta" in el.value for el in at.error)
+
+
+def test_cadastro_exige_a_turma(monkeypatch):
+    monkeypatch.delenv("TESTE_REQUER_APROVACAO", raising=False)
+    at = AppTest.from_file(APP)
+    at.run()
+
+    tab_cadastro = at.tabs[1]
+    _preencher_cadastro(tab_cadastro, "Dora", "dora@guararapes.com.br", "55505", "minhasenha", turma=None)
+    [b for b in tab_cadastro.button if "Criar minha conta" in b.label][0].click()
+    at.run()
+
+    assert not at.exception
+    assert not any("LOGADO" in el.value for el in at.markdown)          # não criou a conta
+    assert any("inclusive a turma" in el.value for el in at.error)

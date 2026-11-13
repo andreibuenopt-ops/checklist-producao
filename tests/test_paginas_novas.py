@@ -88,3 +88,21 @@ def test_admin_aba_armazenamento_mostra_uso_e_apaga_fotos_antigas():
     [b for b in at.button if b.label == "Apagar fotos antigas"][0].click()
     at.run()
     assert ("apagar_fotos", 90) in at.session_state["_admin_chamadas"]
+
+
+def test_historico_mostra_a_turma_do_colaborador_e_filtra_por_ela():
+    at = AppTest.from_file(HIST, default_timeout=30)
+    at.run()
+    assert not at.exception
+    assert any(m.value == "Karoline Raizel (Turma A)" for m in at.metric)            # turma ao lado do nome
+    rotulos = [o for sb in at.selectbox if sb.key == "hist_escolhido" for o in sb.options]
+    assert rotulos and all("Karoline (Turma A)" in o for o in rotulos)                # e no rótulo da lista
+
+    [s for s in at.selectbox if s.key == "hist_turma"][0].set_value("B")              # filtra por outra turma
+    at.run()
+    assert not at.exception
+    assert any("Nenhum checklist nesse filtro" in i.value for i in at.info)
+
+    [s for s in at.selectbox if s.key == "hist_turma"][0].set_value("A")
+    at.run()
+    assert not any("Nenhum checklist nesse filtro" in i.value for i in at.info)

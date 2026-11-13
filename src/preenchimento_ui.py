@@ -48,13 +48,12 @@ from src.models import (
     salvar_justificativa_atraso,
     salvar_respostas_em_lote,
 )
-from src.turnos import (
-    LETRA_TURNO, NOME_TURNO, esta_atrasado, ronda_vigente, turno_anterior, turno_e_data_referencia,
-)
+from src.turno_ui import escolher_turno
+from src.turnos import LETRA_TURNO, NOME_TURNO, esta_atrasado, ronda_vigente, turno_anterior
 
 
 def renderizar_preenchimento(usuario, template: dict):
-    turno = turno_e_data_referencia()
+    turno = escolher_turno(f"ck_{template['id']}")
     st.caption(
         f"**{template['area']}** · {template['codigo']} · "
         f"Turno **{turno.nome}** · Data de referência **{turno.data_referencia.strftime('%d/%m/%Y')}**"

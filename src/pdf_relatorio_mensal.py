@@ -64,7 +64,9 @@ def gerar_pdf_relatorio_mensal(rel: dict, titulo_periodo: str, logo_bytes: bytes
         ["Assinados incompletos", str(g["incompletos"])],
         ["Respostas \"Não\" registradas", str(rel["total_nao"])],
         ["Rondas com atraso justificado", str(rel["total_atrasos"])],
-    ], [110 * mm, 60 * mm]))
+    ] + ([["Paradas de linha concluídas (total)", str(rel["paradas"]["total"])]]
+         + [[f"   {nome}", str(qtd)] for nome, qtd in rel["paradas"]["por_tipo"].items()] if rel.get("paradas") else []),
+        [110 * mm, 60 * mm]))
 
     el.append(Paragraph("Aderência por turno", sub))
     linhas = [["Turno", "Esperados", "Realizados", "Não realizados", "Aderência"]]

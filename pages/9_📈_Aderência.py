@@ -124,9 +124,11 @@ with aba_mensal:
         st.info("Sem turnos encerrados nesse mês.")
     else:
         _metricas(rel["geral"])
-        c1, c2 = st.columns(2)
+        c1, c2, c3 = st.columns(3)
         c1.metric("Respostas \"Não\" no mês", rel["total_nao"])
         c2.metric("Rondas com atraso justificado", rel["total_atrasos"])
+        c3.metric("Paradas de linha concluídas", rel["paradas"]["total"],
+                  help=" · ".join(f"{n}: {q}" for n, q in rel["paradas"]["por_tipo"].items()))
 
         if usuario.pode_exportar_dashboard:
             b1, b2 = st.columns(2)

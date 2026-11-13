@@ -32,6 +32,7 @@ def _relatorio(inicio, fim):
     return {"inicio": inicio, "fim": fim, "linhas": linhas, "geral": somar(linhas), "por_turno": por_turno(linhas),
             "por_checklist": por_checklist(linhas), "ranking": ranking_esquecimentos(linhas),
             "total_nao": 4, "total_atrasos": 1,
+            "paradas": {"total": 3, "por_tipo": {"Programada": 1, "Saída de finos": 0, "Corretiva": 2}},
             "itens_mais_nao": [{"area": "Checklist 1", "pergunta": "Correia?", "qtd": 3}]}
 
 

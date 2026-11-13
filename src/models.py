@@ -591,7 +591,8 @@ def obter_checklist_completo(checklist_id: str, com_bytes: bool = True) -> dict 
     horarios = listar_horarios(checklist["template_id"], checklist["turno_id"])
     respostas = listar_respostas(checklist_id)
     justificativas_atraso = listar_justificativas_atraso(checklist_id)
-    nomes = nomes_usuarios((checklist.get("colaborador_id"), checklist.get("supervisor_id")))
+    pessoas = dados_usuarios((checklist.get("colaborador_id"), checklist.get("supervisor_id")))
+    nomes = {i: p["nome"] for i, p in pessoas.items()}
 
     return {
         "checklist": checklist,
@@ -603,6 +604,8 @@ def obter_checklist_completo(checklist_id: str, com_bytes: bool = True) -> dict 
         "justificativas_atraso": justificativas_atraso,
         # com_bytes=True baixa as fotos INTEIRAS (só o PDF precisa); as telas usam miniatura.
         "fotos": carregar_bytes(listar_fotos(checklist_id)) if com_bytes else listar_fotos(checklist_id),
+        "colaborador_turma": (pessoas.get(checklist.get("colaborador_id")) or {}).get("turma"),
+        "supervisor_turma": (pessoas.get(checklist.get("supervisor_id")) or {}).get("turma"),
         "colaborador_nome": nomes.get(checklist.get("colaborador_id"), "-"),
         "supervisor_nome": nomes.get(checklist.get("supervisor_id"), "-"),
     }
@@ -626,13 +629,36 @@ def respostas_por_data(data_ref: date):
 # Usuários
 # =====================================================================
 def listar_usuarios():
-    return (
-        supabase.table("usuarios")
-        .select("id,nome,email,matricula,papel,ativo,senha_temporaria")
-        .order("nome")
-        .execute()
-        .data
-    )
+    try:
+        return (
+            supabase.table("usuarios")
+            .select("id,nome,email,matricula,papel,ativo,senha_temporaria,turma")
+            .order("nome")
+            .execute()
+            .data
+        )
+    except Exception:
+        # coluna "turma" ainda não existe (migration não rodada): lista sem ela
+        return (
+            supabase.table("usuarios")
+            .select("id,nome,email,matricula,papel,ativo,senha_temporaria")
+            .order("nome")
+            .execute()
+            .data
+        )
+
+
+def dados_usuarios(ids) -> dict:
+    """{id: {"nome": ..., "turma": ...}} — a turma é a FIXA do cadastro."""
+    ids_validos = [i for i in ids if i]
+    if not ids_validos:
+        return {}
+    try:
+        res = supabase.table("usuarios").select("id, nome, turma").in_("id", ids_validos).execute()
+        return {u["id"]: {"nome": u["nome"], "turma": u.get("turma")} for u in res.data}
+    except Exception:
+        res = supabase.table("usuarios").select("id, nome").in_("id", ids_validos).execute()
+        return {u["id"]: {"nome": u["nome"], "turma": None} for u in res.data}
 
 
 def nomes_usuarios(ids: tuple):

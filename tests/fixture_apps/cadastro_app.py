@@ -39,7 +39,7 @@ def _fake_rpc(nome_funcao, params):
     return _Chamada()
 
 
-def _fake_criar_usuario(nome, email, matricula, senha, papel, criado_por_id, ativo=True):
+def _fake_criar_usuario(nome, email, matricula, senha, papel, criado_por_id, ativo=True, quem_cria=None, turma=None):
     if any(u["email"] == email or u["matricula"] == matricula for u in USUARIOS_FAKE.values()):
         raise Exception("duplicate key value violates unique constraint")
     uid = f"user-{len(USUARIOS_FAKE) + 1}"

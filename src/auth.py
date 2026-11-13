@@ -23,6 +23,7 @@ class Usuario:
     papel: str
     ativo: bool
     senha_temporaria: bool
+    turma: str | None = None   # A, B, C, D (fixa no cadastro) — ver sql/migration_turma_usuario.sql
 
     @property
     def eh_master(self) -> bool:
@@ -74,6 +75,19 @@ class Usuario:
         return self.papel in ("supervisor", "coordenacao", "administrador", "master")
 
 
+TURMAS_VALIDAS = ("A", "B", "C", "D")
+
+
+def _buscar_turma(usuario_id: str):
+    """Lê a turma do usuário. Nunca derruba o login: se a coluna ainda não
+    existe (SQL não rodado) ou a consulta falha, devolve None."""
+    try:
+        res = supabase.table("usuarios").select("turma").eq("id", usuario_id).limit(1).execute()
+        return (res.data[0].get("turma") if res.data else None) or None
+    except Exception:
+        return None
+
+
 def _usuario_from_row(row: dict) -> Usuario:
     return Usuario(
         id=row["id"],
@@ -113,7 +127,9 @@ def autenticar(identificador: str, senha: str):
     if not row["senha_valida"]:
         return None, "Senha incorreta."
 
-    return _usuario_from_row(row), None
+    usuario = _usuario_from_row(row)
+    usuario.turma = _buscar_turma(usuario.id)
+    return usuario, None
 
 
 def exigir_login() -> Usuario:
@@ -149,13 +165,17 @@ def exigir_login() -> Usuario:
             nome = st.text_input("Nome completo")
             email = st.text_input("E-mail da empresa")
             matricula = st.text_input("Número do crachá (matrícula)")
+            turma_escolhida = st.selectbox(
+                "Sua turma", ["", *TURMAS_VALIDAS], format_func=lambda t: t or "Escolha…",
+                help="A turma fixa em que você trabalha. Dá pra mudar depois, no menu lateral.",
+            )
             senha_nova = st.text_input("Crie uma senha", type="password")
             senha_confirmar = st.text_input("Confirme a senha", type="password")
             cadastrar = st.form_submit_button("Criar minha conta", type="primary", use_container_width=True)
 
         if cadastrar:
-            if not all([nome.strip(), email.strip(), matricula.strip(), senha_nova]):
-                st.error("Preencha todos os campos.")
+            if not all([nome.strip(), email.strip(), matricula.strip(), senha_nova, turma_escolhida]):
+                st.error("Preencha todos os campos, inclusive a turma.")
             elif len(senha_nova) < 6:
                 st.error("A senha deve ter no mínimo 6 caracteres.")
             elif senha_nova != senha_confirmar:
@@ -165,7 +185,7 @@ def exigir_login() -> Usuario:
                 try:
                     criar_usuario(
                         nome.strip(), email.strip(), matricula.strip(), senha_nova,
-                        "producao", None, ativo=not requer_aprovacao,
+                        "producao", None, ativo=not requer_aprovacao, turma=turma_escolhida,
                     )
                 except Exception as e:
                     st.error(f"Não foi possível criar a conta (e-mail ou matrícula já cadastrados?): {e}")
@@ -196,26 +216,34 @@ PAPEIS_VALIDOS = ("producao", "supervisor", "coordenacao", "administrador", "mas
 
 def criar_usuario(
     nome: str, email: str, matricula: str, senha: str, papel: str, criado_por_id: str,
-    ativo: bool = True, quem_cria=None,
+    ativo: bool = True, quem_cria=None, turma: str | None = None,
 ):
     if papel not in PAPEIS_VALIDOS:
         raise ValueError("Papel inválido.")
+    if turma is not None and turma not in TURMAS_VALIDAS:
+        raise ValueError("Turma inválida.")
     if papel == "master" and not (quem_cria and quem_cria.pode_gerenciar_masters):
         raise ValueError("Só o master pode criar outro usuário master.")
     senha_hash = bcrypt.hashpw(senha.encode(), bcrypt.gensalt()).decode()
-    return (
-        supabase.table("usuarios")
-        .insert({
-            "nome": nome,
-            "email": email,
-            "matricula": matricula,
-            "senha_hash": senha_hash,
-            "papel": papel,
-            "criado_por": criado_por_id,
-            "ativo": ativo,
-        }, returning="minimal")
-        .execute()
-    )
+    registro = {
+        "nome": nome,
+        "email": email,
+        "matricula": matricula,
+        "senha_hash": senha_hash,
+        "papel": papel,
+        "criado_por": criado_por_id,
+        "ativo": ativo,
+    }
+    if turma:   # só manda a chave quando há turma: não quebra se a coluna ainda não existe
+        registro["turma"] = turma
+    return supabase.table("usuarios").insert(registro, returning="minimal").execute()
+
+
+def atualizar_turma_usuario(usuario_id: str, turma: str | None):
+    """Define (ou limpa, com None) a turma fixa do colaborador."""
+    if turma is not None and turma not in TURMAS_VALIDAS:
+        raise ValueError("Turma inválida.")
+    supabase.table("usuarios").update({"turma": turma}, returning="minimal").eq("id", usuario_id).execute()
 
 
 def resetar_senha(usuario_id: str, nova_senha_temporaria: str, quem_altera=None):

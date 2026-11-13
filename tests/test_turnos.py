@@ -56,3 +56,19 @@ def test_chave_ordem_ordena_na_sequencia_c_a_b():
     d = date(2026, 10, 13)
     chaves = sorted([t.chave_ordem(2, d), t.chave_ordem(1, d), t.chave_ordem(3, d)])
     assert chaves == [t.chave_ordem(3, d), t.chave_ordem(1, d), t.chave_ordem(2, d)]
+
+
+def test_turno_proximo_e_a_inversa_do_anterior():
+    d = date(2026, 10, 13)
+    for tid in (1, 2, 3):
+        ant_id, ant_data = t.turno_anterior(tid, d)
+        assert t.turno_proximo(ant_id, ant_data) == (tid, d)
+    assert t.turno_proximo(2, d) == (3, date(2026, 10, 14))      # depois da Tarde vem a Noite do dia SEGUINTE
+
+
+def test_turnos_selecionaveis_sao_anterior_atual_proximo():
+    d = date(2026, 10, 13)
+    ids = lambda atual: [(x.turno_id, x.data_referencia) for x in t.turnos_selecionaveis(atual)]
+    assert ids(t.Turno(1, "Manhã", d)) == [(3, d), (1, d), (2, d)]
+    assert ids(t.Turno(2, "Tarde", d)) == [(1, d), (2, d), (3, date(2026, 10, 14))]
+    assert ids(t.Turno(3, "Noite", d)) == [(2, date(2026, 10, 12)), (3, d), (1, d)]

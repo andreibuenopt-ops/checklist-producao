@@ -28,6 +28,7 @@ def _fake_turno_e_data_referencia():
 
 
 def _fake_obter_ou_criar_checklist(template_id, turno_id, data_referencia):
+    st.session_state.setdefault("_abertos_debug", []).append((turno_id, data_referencia))
     return {"id": "checklist-1", "status": STATUS_CHECKLIST, "comentario": "", "data": "2026-08-31"}
 
 
@@ -144,7 +145,8 @@ def _fake_gerar_pdf_checklist(dados, logo_bytes=None):
     return b"%PDF-fake-content"
 
 
-pui.turno_e_data_referencia = _fake_turno_e_data_referencia
+import src.turno_ui as turno_ui_mod
+turno_ui_mod.turno_e_data_referencia = _fake_turno_e_data_referencia
 pui.obter_ou_criar_checklist = _fake_obter_ou_criar_checklist
 pui.definir_colaborador = _fake_definir_colaborador
 pui.buscar_checklist = _fake_buscar_checklist

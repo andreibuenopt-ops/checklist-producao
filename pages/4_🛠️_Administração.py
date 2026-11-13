@@ -6,7 +6,13 @@ import streamlit as st
 
 from src.fotos import remover_fotos_antigas, uso_armazenamento
 from src.itens import separar_itens
-from src.auth import alternar_status, atualizar_papel_usuario, criar_usuario, exigir_login, resetar_senha
+from src.paradas import (
+    TIPOS, adicionar_itens_parada, desativar_item_parada, editar_item_parada, listar_itens_parada,
+)
+from src.auth import (
+    TURMAS_VALIDAS, alternar_status, atualizar_papel_usuario, atualizar_turma_usuario, criar_usuario,
+    exigir_login, resetar_senha,
+)
 from src.models import (
     COR_PADRAO_GUARARAPES,
     MAX_HORARIOS_POR_TURNO,
@@ -57,9 +63,9 @@ if not usuario.pode_gerenciar_sistema:
     st.stop()
 
 st.title("🛠️ Administração")
-tab_visual, tab_usuarios, tab_equipamentos, tab_novo_checklist, tab_checklists, tab_armazenamento = st.tabs(
+tab_visual, tab_usuarios, tab_equipamentos, tab_novo_checklist, tab_checklists, tab_armazenamento, tab_paradas = st.tabs(
     ["🎨 Identidade Visual", "👤 Usuários", "🔧 Áreas/Equipamentos", "➕ Novo Checklist",
-     "📋 Checklists Cadastrados", "💾 Armazenamento"]
+     "📋 Checklists Cadastrados", "💾 Armazenamento", "🛑 Paradas"]
 )
 
 NIVEIS = {
@@ -161,7 +167,9 @@ with tab_usuarios:
         c3, c4 = st.columns(2)
         matricula = c3.text_input("Número do crachá (matrícula)")
         papel = c4.selectbox("Nível de acesso", niveis_disponiveis, format_func=lambda p: NIVEIS[p])
-        senha_inicial = st.text_input("Senha inicial", type="password")
+        c5, c6 = st.columns(2)
+        senha_inicial = c5.text_input("Senha inicial", type="password")
+        turma_nova = c6.selectbox("Turma", ["", *TURMAS_VALIDAS], format_func=lambda t: t or "Não definida")
         if st.form_submit_button("Cadastrar", type="primary"):
             if not all([nome, email, matricula, senha_inicial]):
                 st.error("Preencha todos os campos.")
@@ -169,7 +177,7 @@ with tab_usuarios:
                 st.error("Senha muito curta (mínimo 6 caracteres).")
             else:
                 try:
-                    criar_usuario(nome, email, matricula, senha_inicial, papel, usuario.id, quem_cria=usuario)
+                    criar_usuario(nome, email, matricula, senha_inicial, papel, usuario.id, quem_cria=usuario, turma=turma_nova or None)
                     st.success(f"Usuário {nome} cadastrado.")
                     st.rerun()
                 except Exception as e:
@@ -183,6 +191,7 @@ with tab_usuarios:
             {
                 "Nome": u["nome"], "E-mail": u["email"], "Matrícula": u["matricula"],
                 "Papel": NIVEIS.get(u["papel"], u["papel"]),
+                "Turma": u.get("turma") or "-",
                 "Ativo": "✅" if u["ativo"] else "⛔",
                 "Senha temporária": "⚠️" if u["senha_temporaria"] else "-",
             }
@@ -193,6 +202,20 @@ with tab_usuarios:
 
     st.divider()
     mapa_usuarios = {f"{u['nome']} ({u['matricula']})": u["id"] for u in usuarios}
+    turma_de_usuario = {u["id"]: u.get("turma") for u in usuarios}
+
+    st.subheader("Turma do colaborador")
+    st.caption("Turma fixa (A, B, C ou D). Aparece no histórico, no dashboard e nos PDFs. O próprio colaborador também muda no menu lateral.")
+    if usuarios:
+        with st.form("form_turma_usuario"):
+            alvo_turma = st.selectbox("Colaborador", list(mapa_usuarios.keys()), key="alvo_turma_usuario")
+            nova_turma = st.selectbox("Turma", ["", *TURMAS_VALIDAS], format_func=lambda t: t or "Não definida", key="nova_turma_usuario")
+            salvar_turma = st.form_submit_button("Salvar turma", type="primary")
+        if salvar_turma:
+            atualizar_turma_usuario(mapa_usuarios[alvo_turma], nova_turma or None)
+            st.success("Turma salva.")
+            st.rerun()
+    st.divider()
     mapa_usuarios_papel = {f"{u['nome']} ({u['matricula']})": u["papel"] for u in usuarios}
 
     # Quem não é master nem vê conta master como alvo — evita erro na
@@ -687,3 +710,61 @@ with tab_armazenamento:
         apagadas = remover_fotos_antigas(int(dias_apagar))
         st.success(f"{apagadas} foto(s) apagada(s).")
         st.rerun()
+
+
+# =====================================================================
+# TAB 6 — Paradas de linha: perguntas de cada um dos 3 checklists
+# =====================================================================
+with tab_paradas:
+    st.subheader("Perguntas dos checklists de parada")
+    st.caption(
+        "São 3 checklists separados. Cada vez que alguém abre uma parada, ele recebe as perguntas do tipo escolhido. "
+        "Com **Exigir foto** marcado, a pergunta não deixa concluir sem foto do local. Remover uma pergunta só a "
+        "desativa: paradas antigas continuam mostrando o que foi respondido."
+    )
+    for tipo_chave, tipo_nome in TIPOS.items():
+        with st.expander(tipo_nome, expanded=False):
+            itens_tipo = listar_itens_parada(tipo_chave, apenas_ativos=True)
+            if not itens_tipo:
+                st.info("Nenhuma pergunta cadastrada ainda.")
+            for it in itens_tipo:
+                chave_edit = f"editando_pi_{it['id']}"
+                if not st.session_state.get(chave_edit, False):
+                    c1, c2, c3 = st.columns([6, 1, 1])
+                    c1.write(f"{it['ordem']}. {it['pergunta']}" + (" 📷 foto obrigatória" if it["exige_foto"] else ""))
+                    if c2.button("Editar", key=f"edit_pi_{it['id']}"):
+                        st.session_state[chave_edit] = True
+                        st.rerun()
+                    if c3.button("Remover", key=f"rm_pi_{it['id']}"):
+                        desativar_item_parada(it["id"])
+                        st.rerun()
+                else:
+                    with st.form(f"form_edit_pi_{it['id']}"):
+                        nova_p = st.text_area("Pergunta", value=it["pergunta"])
+                        nova_foto = st.checkbox("Exigir foto", value=it["exige_foto"])
+                        ca, cb = st.columns(2)
+                        salvar_pi = ca.form_submit_button("Salvar", type="primary")
+                        cancelar_pi = cb.form_submit_button("Cancelar")
+                    if salvar_pi:
+                        if nova_p.strip():
+                            editar_item_parada(it["id"], nova_p, nova_foto)
+                            st.session_state[chave_edit] = False
+                            st.rerun()
+                        else:
+                            st.error("A pergunta não pode ficar vazia.")
+                    if cancelar_pi:
+                        st.session_state[chave_edit] = False
+                        st.rerun()
+
+            st.markdown("**Adicionar perguntas**")
+            with st.form(f"form_add_pi_{tipo_chave}", clear_on_submit=True):
+                texto_novas = st.text_area("Uma pergunta por linha", height=140, key=f"txt_pi_{tipo_chave}")
+                exige_novas = st.checkbox("Exigir foto em cada uma", value=True, key=f"foto_pi_{tipo_chave}")
+                if st.form_submit_button("Adicionar", type="primary"):
+                    novas = [l for l in texto_novas.splitlines() if l.strip()]
+                    if not novas:
+                        st.error("Escreva pelo menos uma pergunta.")
+                    else:
+                        adicionar_itens_parada(tipo_chave, novas, exige_novas)
+                        st.success(f"{len(novas)} pergunta(s) adicionada(s).")
+                        st.rerun()

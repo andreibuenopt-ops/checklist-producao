@@ -10,6 +10,7 @@ from src.auth import exigir_login
 from src.models import (
     checklists_do_dia,
     listar_templates,
+    dados_usuarios,
     nomes_usuarios,
     obter_checklist_completo,
     obter_logo_bytes_com_fallback,
@@ -121,6 +122,7 @@ else:
         uid for c in checklists for uid in (c.get("colaborador_id"), c.get("supervisor_id"))
     )
     nomes = nomes_usuarios(ids_usuarios)
+    pessoas = dados_usuarios(ids_usuarios)
 
     linhas = [
         {
@@ -131,6 +133,7 @@ else:
                 else {"completo": "✅ Completo", "em_andamento": "🟡 Em andamento", "pendente": "⚪ Pendente"}[c["status"]]
             ),
             "Colaborador": nomes.get(c.get("colaborador_id"), "-"),
+            "Turma": (pessoas.get(c.get("colaborador_id")) or {}).get("turma") or "-",
             "Assinado por": nomes.get(c.get("supervisor_id"), "-"),
             "Concluído em": formatar_datahora_local(c.get("concluido_em")),
         }
