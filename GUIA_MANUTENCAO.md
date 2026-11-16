@@ -400,5 +400,10 @@ botão **➕ Sub** ao lado da pergunta. Atenção: no Supervisor de Turno as per
   Supervisor de Turno continuam existindo, independentes desta página.
 
 ## Ver na tela × baixar PDF
-Regra: todo conteúdo aparece **na tela**; o PDF é opcional e só é gerado quando a pessoa clica (`botao_pdf_checklist` ou `st.download_button(data=callable, on_click="ignore")`).
+Regra: todo conteúdo aparece **na tela** (checklists completos em formato de "folha" HTML: `renderizar_checklist_folha` em `src/historico_ui.py`); o PDF é opcional e só é gerado quando a pessoa clica (`botao_pdf_checklist` ou `st.download_button(data=callable, on_click="ignore")`).
 - Checklist já concluído (Preencher), Dashboard ("Ver um checklist específico"), Histórico, Paradas, Ecoresinator e 5 Porquês (histórico) mostram o conteúdo antes do botão de PDF.
+
+## Atualização automática do Dashboard
+- `pages/2_📊_Dashboard.py`: fragmento com `run_every="15m"` recarrega a página inteira (limpa o cache) — dado nunca fica mais de ~15 min defasado (rondas são de 2 em 2 h). Botão "🔄 Atualizar agora" força na hora.
+- Mostra "⏳ Ainda sem assinatura no turno atual" (só quando a data é o dia de produção de hoje) pra cobrar no turno certo.
+- **Rondas em atraso** (`src/atrasos.py`, usado no Dashboard): ronda do turno atual cujo horário já passou e que não tem NENHUMA resposta. "Atrasada" = passou de `MARGEM_ATRASO_MINUTOS` (60 min, `src/turnos.py`); dentro da margem aparece como "na hora de fazer". Checklist já assinado não entra. Só aparece quando a data do Dashboard é o dia de produção de hoje.

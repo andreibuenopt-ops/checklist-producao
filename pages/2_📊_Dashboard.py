@@ -1,5 +1,6 @@
 """Dashboard — resultados do dia atual ou de qualquer dia passado."""
 import io
+import time
 from collections import Counter
 
 import pandas as pd
@@ -9,6 +10,8 @@ import streamlit as st
 from src.auth import exigir_login
 from src.models import (
     checklists_do_dia,
+    horarios_do_turno,
+    rondas_com_resposta,
     listar_templates,
     dados_usuarios,
     nomes_usuarios,
@@ -16,7 +19,8 @@ from src.models import (
     obter_logo_bytes_com_fallback,
     respostas_por_data,
 )
-from src.historico_ui import botao_pdf_checklist, renderizar_checklist_somente_leitura
+from src.historico_ui import botao_pdf_checklist, renderizar_checklist_folha, renderizar_checklist_somente_leitura
+from src.atrasos import formatar_atraso, rondas_pendentes
 from src.pdf_dashboard import gerar_pdf_dashboard
 from src.turnos import agora_local, formatar_datahora_local, turno_e_data_referencia
 from src.tema import aplicar_tema, desativar_traducao_automatica
@@ -38,6 +42,33 @@ st.title("📊 Dashboard de Checklists")
 # Paleta de status (mesmos papéis em todo o app: Sim=good, Não=critical, N/A=neutro)
 COR_SIM, COR_NAO, COR_NA = "#0ca30c", "#d03b3b", "#8a8a86"
 COR_PENDENCIA = "#d03b3b"
+
+# ---------------------------------------------------------------------
+# Atualização automática (só no dia de hoje): quem acompanha a tela vê o
+# andamento sem apertar F5 e consegue cobrar no turno certo. As rondas são de
+# 2 em 2 horas; atualiza a cada 15 min (nunca passa de 2 h defasado).
+# ---------------------------------------------------------------------
+INTERVALO_ATUALIZACAO = "15m"
+_SEGUNDOS_MIN = 14 * 60
+
+st.session_state["_dash_carregado_em"] = time.time()
+
+
+@st.fragment(run_every=INTERVALO_ATUALIZACAO)
+def _barra_atualizacao():
+    # O timer só repete este trecho; se já passou o intervalo desde a última
+    # carga completa, recarrega a página inteira (busca dados novos).
+    if time.time() - st.session_state.get("_dash_carregado_em", time.time()) >= _SEGUNDOS_MIN:
+        st.cache_data.clear()
+        st.rerun(scope="app")
+    col_txt, col_btn = st.columns([4, 1])
+    col_txt.caption(f"🕒 Atualizado às {agora_local().strftime('%H:%M')} · atualiza sozinho a cada 15 min")
+    if col_btn.button("🔄 Atualizar agora", use_container_width=True):
+        st.cache_data.clear()
+        st.rerun(scope="app")
+
+
+_barra_atualizacao()
 
 # ---------------------------------------------------------------------
 # Filtros
@@ -107,6 +138,42 @@ c2.metric("Concluídos", completos)
 c3.metric("Não iniciados", nao_iniciados)
 c4.metric("Conformidade (Sim)", f"{conformidade:.0f}%" if conformidade is not None else "—")
 c5.metric("'Não' em itens críticos", criticas_nao, delta_color="inverse")
+
+# Quem ainda não assinou no turno em andamento (pra cobrar na hora certa)
+_ref = turno_e_data_referencia()
+if data_ref == _ref.data_referencia:
+    _assinados = {
+        c["checklist_templates"]["titulo"] for c in checklists_todos
+        if c["status"] == "completo" and c["turno_id"] == _ref.turno_id
+    }
+    _faltam = [t["titulo"] for t in templates if t["titulo"] not in _assinados]
+    if area_escolhida != "Todas as áreas":
+        _faltam = [t for t in _faltam if t == area_escolhida]
+    # Rondas em atraso (horário já passou e nada foi respondido)
+    _ids_turno = [c["id"] for c in checklists_todos if c["turno_id"] == _ref.turno_id]
+    _pend = rondas_pendentes(
+        templates, horarios_do_turno(_ref.turno_id), checklists_todos,
+        rondas_com_resposta(_ids_turno), _ref.data_referencia, _ref.turno_id, _ref.nome, agora_local(),
+    )
+    _atrasadas = [p for p in _pend if p["atrasada"]]
+    _na_hora = [p for p in _pend if not p["atrasada"]]
+    if _atrasadas:
+        with st.expander(f"🚨 Rondas em ATRASO no turno atual ({_ref.nome}) — {len(_atrasadas)}", expanded=True):
+            for p in _atrasadas:
+                st.write(f"• **{p['titulo']}** — ronda das {p['horario']} · atrasada {formatar_atraso(p['atraso_min'])}"
+                         + ("" if p["iniciado"] else " · não iniciado"))
+    if _na_hora:
+        with st.expander(f"🕒 Rondas na hora de fazer (ainda dentro da margem) — {len(_na_hora)}", expanded=False):
+            for p in _na_hora:
+                st.write(f"• {p['titulo']} — ronda das {p['horario']}")
+    if not _pend:
+        st.success("Nenhuma ronda pendente no turno atual. ✅")
+    if _faltam:
+        with st.expander(f"⏳ Ainda sem assinatura no turno atual ({_ref.nome}) — {len(_faltam)}", expanded=False):
+            for t in _faltam:
+                st.write(f"• {t}")
+    else:
+        st.success(f"Todos os checklists do turno atual ({_ref.nome}) já foram assinados. ✅")
 
 st.divider()
 
@@ -190,7 +257,7 @@ if checklists:
         for c in checklists
     }
     checklist_escolhido = st.selectbox("Checklist", list(mapa_checklists.keys()))
-    renderizar_checklist_somente_leitura(obter_checklist_completo(mapa_checklists[checklist_escolhido], com_bytes=False))
+    renderizar_checklist_folha(obter_checklist_completo(mapa_checklists[checklist_escolhido], com_bytes=False))
     st.caption("Quer uma cópia? Gere o PDF (opcional):")
     botao_pdf_checklist(mapa_checklists[checklist_escolhido], obter_logo_bytes_com_fallback(), obter_checklist_completo, "dash")
 

@@ -5,7 +5,7 @@ from datetime import timedelta
 import streamlit as st
 
 from src.auth import exigir_login
-from src.historico_ui import botao_pdf_checklist, renderizar_checklist_somente_leitura
+from src.historico_ui import botao_pdf_checklist, renderizar_checklist_folha, renderizar_checklist_somente_leitura
 from src.paradas import TIPOS_CURTOS, listar_paradas_periodo, obter_parada_completa
 from src.paradas_ui import botao_pdf_parada, renderizar_parada_somente_leitura
 from src.models import (
@@ -92,7 +92,7 @@ with aba_hist:
             escolhido = st.selectbox(
                 "Abrir checklist", options=linhas, format_func=lambda c: _rotulo(c, pessoas), key="hist_escolhido",
             )
-            renderizar_checklist_somente_leitura(obter_checklist_completo(escolhido["id"], com_bytes=False))
+            renderizar_checklist_folha(obter_checklist_completo(escolhido["id"], com_bytes=False))
             botao_pdf_checklist(escolhido["id"], obter_logo_bytes_com_fallback(), obter_checklist_completo, "hist")
 
 # ---------------------------------------------------------------------

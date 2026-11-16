@@ -556,6 +556,29 @@ def justificativas_periodo(inicio: date, fim: date) -> list:
     ))
 
 
+def horarios_do_turno(turno_id: int) -> list:
+    """Horários (rondas) de todos os checklists naquele turno."""
+    return _todas_as_linhas(lambda: (
+        supabase.table("checklist_template_horarios")
+        .select("id, template_id, horario")
+        .eq("turno_id", turno_id)
+        .order("id")
+    ))
+
+
+def rondas_com_resposta(checklist_ids: list) -> set:
+    """{(checklist_id, horario_id)} que já têm ao menos uma resposta."""
+    if not checklist_ids:
+        return set()
+    linhas = _todas_as_linhas(lambda: (
+        supabase.table("checklist_respostas")
+        .select("id, checklist_id, horario_id")
+        .in_("checklist_id", list(checklist_ids))
+        .order("id")
+    ))
+    return {(l["checklist_id"], l["horario_id"]) for l in linhas}
+
+
 def checklists_do_dia(data_ref: date):
     res = (
         supabase.table("checklists")

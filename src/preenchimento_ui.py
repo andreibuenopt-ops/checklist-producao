@@ -30,7 +30,7 @@ from src.fotos import (
     MAX_FOTOS_POR_ITEM, agrupar_por_item, baixar_miniatura, enviar_foto, listar_fotos, remover_fotos_de_itens,
 )
 from src.itens import faltando_fotos, faltando_respostas, ids_filhos_inativos, itens_da_ronda, separar_itens
-from src.historico_ui import botao_pdf_checklist, renderizar_checklist_somente_leitura
+from src.historico_ui import botao_pdf_checklist, renderizar_checklist_folha, renderizar_checklist_somente_leitura
 from src.models import (
     buscar_checklist,
     checklist_anterior,
@@ -76,7 +76,7 @@ def renderizar_preenchimento(usuario, template: dict):
         col2.metric("Assinado por", nomes.get(checklist.get("supervisor_id"), "-"))
 
         st.divider()
-        renderizar_checklist_somente_leitura(obter_checklist_completo(checklist["id"], com_bytes=False))
+        renderizar_checklist_folha(obter_checklist_completo(checklist["id"], com_bytes=False))
         st.caption("Quer uma cópia? Gere o PDF (opcional):")
         botao_pdf_checklist(checklist["id"], obter_logo_bytes_com_fallback(), obter_checklist_completo, "preench")
         return
