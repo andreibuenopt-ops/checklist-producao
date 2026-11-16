@@ -398,3 +398,7 @@ botão **➕ Sub** ao lado da pergunta. Atenção: no Supervisor de Turno as per
 - Histórico: aba **Paradas** (filtro por período e tipo, PDF sob demanda). Relatório mensal: contagem de paradas por tipo.
 - Código em `src/paradas.py` (dados/regras), `src/paradas_ui.py` (tela), `src/pdf_parada.py`. As 3 perguntas de parada do
   Supervisor de Turno continuam existindo, independentes desta página.
+
+## Ver na tela × baixar PDF
+Regra: todo conteúdo aparece **na tela**; o PDF é opcional e só é gerado quando a pessoa clica (`botao_pdf_checklist` ou `st.download_button(data=callable, on_click="ignore")`).
+- Checklist já concluído (Preencher), Dashboard ("Ver um checklist específico"), Histórico, Paradas, Ecoresinator e 5 Porquês (histórico) mostram o conteúdo antes do botão de PDF.

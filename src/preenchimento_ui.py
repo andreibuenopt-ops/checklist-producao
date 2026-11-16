@@ -75,6 +75,9 @@ def renderizar_preenchimento(usuario, template: dict):
         col1.metric("Colaborador", nomes.get(checklist.get("colaborador_id"), "-"))
         col2.metric("Assinado por", nomes.get(checklist.get("supervisor_id"), "-"))
 
+        st.divider()
+        renderizar_checklist_somente_leitura(obter_checklist_completo(checklist["id"], com_bytes=False))
+        st.caption("Quer uma cópia? Gere o PDF (opcional):")
         botao_pdf_checklist(checklist["id"], obter_logo_bytes_com_fallback(), obter_checklist_completo, "preench")
         return
 

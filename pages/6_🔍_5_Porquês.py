@@ -269,11 +269,10 @@ with tab_abertas:
                         st.success("Verificação registrada.")
                         st.rerun()
 
-            analise_completa = buscar_analise_5_porques(a["id"])
-            pdf_bytes = gerar_pdf_5_porques(analise_completa, acoes, obter_logo_bytes_com_fallback())
             st.download_button(
-                "⬇️ Exportar PDF",
-                data=pdf_bytes,
+                "⬇️ Exportar PDF (opcional)",
+                data=lambda a=a, acoes=acoes: gerar_pdf_5_porques(buscar_analise_5_porques(a["id"]), acoes, obter_logo_bytes_com_fallback()),
+                on_click="ignore",
                 file_name=f"5porques_{a['equipamento']}_{a['data_parada']}.pdf",
                 mime="application/pdf",
                 key=f"pdf_{a['id']}",
@@ -294,11 +293,17 @@ with tab_historico:
             st.caption(f"Eficaz: {'Sim' if a.get('eficaz') else 'Não' if a.get('eficaz') is False else '—'}")
 
             acoes = listar_acoes_5_porques(a["id"])
-            analise_completa = buscar_analise_5_porques(a["id"])
-            pdf_bytes = gerar_pdf_5_porques(analise_completa, acoes, obter_logo_bytes_com_fallback())
+            for n in range(1, 6):
+                if a.get(f"porque_{n}"):
+                    st.write(f"**{n}º porquê:** {a[f'porque_{n}']}")
+            for ac in acoes:
+                st.write(f"🔧 **Ação:** {ac.get('acao_corretiva', '—')} · prazo {ac.get('prazo') or '—'}")
+            if a.get("evidencias"):
+                st.write(f"**Evidências da eficácia:** {a['evidencias']}")
             st.download_button(
-                "⬇️ Exportar PDF",
-                data=pdf_bytes,
+                "⬇️ Exportar PDF (opcional)",
+                data=lambda a=a, acoes=acoes: gerar_pdf_5_porques(buscar_analise_5_porques(a["id"]), acoes, obter_logo_bytes_com_fallback()),
+                on_click="ignore",
                 file_name=f"5porques_{a['equipamento']}_{a['data_parada']}.pdf",
                 mime="application/pdf",
                 key=f"pdf_hist_{a['id']}",

@@ -16,7 +16,7 @@ from src.models import (
     obter_logo_bytes_com_fallback,
     respostas_por_data,
 )
-from src.historico_ui import botao_pdf_checklist
+from src.historico_ui import botao_pdf_checklist, renderizar_checklist_somente_leitura
 from src.pdf_dashboard import gerar_pdf_dashboard
 from src.turnos import agora_local, formatar_datahora_local, turno_e_data_referencia
 from src.tema import aplicar_tema, desativar_traducao_automatica
@@ -155,7 +155,8 @@ if usuario.pode_exportar_dashboard and linhas:
         use_container_width=True,
     )
 
-    pdf_dashboard = gerar_pdf_dashboard(
+    def _pdf_dashboard():
+        return gerar_pdf_dashboard(
         data_ref, area_escolhida,
         cards={
             "esperados": esperados, "completos": completos, "nao_iniciados": nao_iniciados,
@@ -168,10 +169,10 @@ if usuario.pode_exportar_dashboard and linhas:
             r["checklist_template_itens"]["pergunta"] for r in respostas if r["resposta"] == "Não"
         ).most_common(10)),
         logo_bytes=obter_logo_bytes_com_fallback(),
-    )
+        )
     col_pdf_dash.download_button(
         "⬇️ Exportar PDF (resumo)",
-        data=pdf_dashboard,
+        data=_pdf_dashboard, on_click="ignore",
         file_name=f"dashboard_{data_ref.isoformat()}.pdf",
         mime="application/pdf",
         use_container_width=True,
@@ -182,13 +183,15 @@ elif not usuario.pode_exportar_dashboard:
 # Exportar um checklist específico em PDF (com todas as respostas)
 if checklists:
     st.divider()
-    st.subheader("Exportar um checklist específico")
+    st.subheader("Ver um checklist específico")
     ICONE_STATUS = {"completo": "✅", "em_andamento": "🟡", "pendente": "⚪"}
     mapa_checklists = {
         f"{c['checklist_templates']['titulo']} · {c['turnos']['nome']} · {ICONE_STATUS[c['status']]}": c["id"]
         for c in checklists
     }
     checklist_escolhido = st.selectbox("Checklist", list(mapa_checklists.keys()))
+    renderizar_checklist_somente_leitura(obter_checklist_completo(mapa_checklists[checklist_escolhido], com_bytes=False))
+    st.caption("Quer uma cópia? Gere o PDF (opcional):")
     botao_pdf_checklist(mapa_checklists[checklist_escolhido], obter_logo_bytes_com_fallback(), obter_checklist_completo, "dash")
 
 st.divider()

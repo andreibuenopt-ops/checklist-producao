@@ -72,9 +72,9 @@ def renderizar_ecoresinator(usuario):
             "colaborador_nome": nomes.get(checklist.get("colaborador_id"), "-"),
             "supervisor_nome": nomes.get(checklist.get("supervisor_id"), "-"),
         }
-        pdf_bytes = gerar_pdf_ecoresinator(dados_pdf, obter_logo_bytes_com_fallback())
         st.download_button(
-            "⬇️ Exportar PDF desta rotina", data=pdf_bytes,
+            "⬇️ Exportar PDF desta rotina (opcional)",
+            data=lambda: gerar_pdf_ecoresinator(dados_pdf, obter_logo_bytes_com_fallback()), on_click="ignore",
             file_name=f"ecoresinator_{checklist['id']}.pdf", mime="application/pdf",
         )
         return
