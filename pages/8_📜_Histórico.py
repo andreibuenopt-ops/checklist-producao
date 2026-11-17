@@ -31,6 +31,30 @@ mostrar_usuario_logado(usuario)
 st.title("📜 Histórico de checklists")
 
 hoje_producao = turno_e_data_referencia().data_referencia
+
+# Memória (cache) de 3 min: abrir/trocar de checklist não refaz as consultas ao
+# Supabase. Ao assinar, ou no botão "Atualizar", o cache é limpo.
+TTL = 180
+
+
+@st.cache_data(ttl=TTL, show_spinner="Carregando…")
+def _pendentes_cache(colaborador_id):
+    return listar_pendentes_assinatura(colaborador_id=colaborador_id)
+
+
+@st.cache_data(ttl=TTL, show_spinner=False)
+def _periodo_cache(inicio, fim, template_id):
+    return listar_checklists_periodo(inicio, fim, template_id=template_id)
+
+
+@st.cache_data(ttl=TTL, show_spinner="Abrindo…")
+def _checklist_cache(checklist_id):
+    return obter_checklist_completo(checklist_id, com_bytes=False)
+
+
+if st.button("🔄 Atualizar dados", help="Os dados ficam em memória por 3 min. Use pra buscar agora."):
+    st.cache_data.clear()
+    st.rerun()
 aba_hist, aba_pend, aba_par = st.tabs(["📜 Histórico", "✍️ Pendentes de assinatura", "🛑 Paradas"])
 
 
@@ -74,7 +98,7 @@ with aba_hist:
     else:
         inicio, fim = periodo
         linhas = [
-            c for c in listar_checklists_periodo(inicio, fim, template_id=nomes_areas[area_sel])
+            c for c in _periodo_cache(inicio, fim, nomes_areas[area_sel])
             if c["status"] != "pendente"
         ]
         if turno_sel != "Todos":
@@ -92,7 +116,7 @@ with aba_hist:
             escolhido = st.selectbox(
                 "Abrir checklist", options=linhas, format_func=lambda c: _rotulo(c, pessoas), key="hist_escolhido",
             )
-            renderizar_checklist_folha(obter_checklist_completo(escolhido["id"], com_bytes=False))
+            renderizar_checklist_folha(_checklist_cache(escolhido["id"]))
             botao_pdf_checklist(escolhido["id"], obter_logo_bytes_com_fallback(), obter_checklist_completo, "hist")
 
 # ---------------------------------------------------------------------
@@ -105,7 +129,7 @@ with aba_pend:
         "resposta, ele é assinado como **incompleto** (fica marcado)."
     )
     so_meus = usuario.papel == "producao"
-    pendentes = listar_pendentes_assinatura(colaborador_id=usuario.id if so_meus else None)
+    pendentes = _pendentes_cache(usuario.id if so_meus else None)
     if so_meus:
         st.caption("Mostrando os checklists que você preencheu.")
 
@@ -119,7 +143,7 @@ with aba_pend:
             return f"{_rotulo(c, pessoas_pend)}{extra}"
 
         pend = st.selectbox("Checklist pendente", options=pendentes, format_func=_rotulo_pendente, key="pend_sel")
-        renderizar_checklist_somente_leitura(obter_checklist_completo(pend["id"], com_bytes=False), resumido=True)
+        renderizar_checklist_somente_leitura(_checklist_cache(pend["id"]), resumido=True)
 
         if pend["faltando"]:
             st.warning(
@@ -131,6 +155,7 @@ with aba_pend:
         )
         if st.button("✅ Assinar e concluir", type="primary", key=f"pend_assinar_{pend['id']}"):
             concluir_checklist(pend["id"], usuario.id, comentario.strip(), incompleto=pend["faltando"] > 0)
+            st.cache_data.clear()
             st.success("Checklist assinado. ✅")
             st.rerun()
 

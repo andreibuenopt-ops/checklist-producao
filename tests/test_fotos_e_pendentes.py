@@ -36,6 +36,7 @@ class _Query:
         return self
 
     def eq(self, col, val): self._filtros.append(("eq", col, val)); return self
+    def in_(self, col, vals): self._filtros.append(("in", col, list(vals))); return self
     def gte(self, col, val): self._filtros.append(("gte", col, val)); return self
     def lte(self, col, val): self._filtros.append(("lte", col, val)); return self
     def order(self, *_a, **_k): return self
@@ -47,6 +48,7 @@ class _Query:
             for op, col, val in self._filtros:
                 v = l.get(col)
                 if op == "eq" and v != val: return False
+                if op == "in" and v not in val: return False
                 if op == "gte" and not str(v) >= str(val): return False
                 if op == "lte" and not str(v) <= str(val): return False
             return True
@@ -90,11 +92,13 @@ def test_pendentes_so_turnos_encerrados_com_respostas(models, monkeypatch):
     itens = [{"id": f"i{n}"} for n in range(4)]
     horarios = [{"id": "h1"}, {"id": "h2"}]
     respondidas = {("i0", "h1"): {"resposta": "Sim"}, ("i1", "h1"): {"resposta": "Sim"}, ("i0", "h2"): {"resposta": "Não"}}
-    monkeypatch.setattr(models, "supabase", _SupabaseFalso({"checklists": checklists}))
-    monkeypatch.setattr(models, "listar_itens", lambda tid: itens)
-    monkeypatch.setattr(models, "listar_horarios", lambda tid, turno: horarios)
-    monkeypatch.setattr(models, "listar_respostas", lambda cid: respondidas if cid == "passado_com_resp" else {})
-    monkeypatch.setattr(models, "listar_fotos", lambda cid: [])
+    resp_rows = [{"id": f"r{n}", "checklist_id": "passado_com_resp", "item_id": i, "horario_id": h,
+                  "resposta": v["resposta"], "observacao": ""} for n, ((i, h), v) in enumerate(respondidas.items())]
+    monkeypatch.setattr(models, "supabase", _SupabaseFalso({
+        "checklists": checklists, "checklist_respostas": resp_rows, "checklist_fotos": [],
+        "checklist_template_itens": [{**i, "template_id": "t1", "ordem": n} for n, i in enumerate(itens)],
+        "checklist_template_horarios": [{**h, "template_id": "t1", "turno_id": 2, "ordem": n} for n, h in enumerate(horarios)],
+    }))
 
     r = models.listar_pendentes_assinatura()
     assert [c["id"] for c in r] == ["passado_com_resp"]
@@ -108,11 +112,13 @@ def test_pendente_conta_foto_obrigatoria_que_falta_como_incompleto(models, monke
     itens = [{"id": "pai"}, {"id": "filha", "pai_item_id": "pai", "exige_foto": True}]
     horarios = [{"id": "h1"}]
     respostas = {("pai", "h1"): {"resposta": "Sim"}, ("filha", "h1"): {"resposta": "Sim"}}   # tudo respondido
-    monkeypatch.setattr(models, "supabase", _SupabaseFalso({"checklists": checklists}))
-    monkeypatch.setattr(models, "listar_itens", lambda tid: itens)
-    monkeypatch.setattr(models, "listar_horarios", lambda tid, turno: horarios)
-    monkeypatch.setattr(models, "listar_respostas", lambda cid: respostas)
-    monkeypatch.setattr(models, "listar_fotos", lambda cid: [])    # mas SEM a foto
+    resp_rows = [{"id": f"r{n}", "checklist_id": "ck", "item_id": i, "horario_id": h,
+                  "resposta": v["resposta"], "observacao": ""} for n, ((i, h), v) in enumerate(respostas.items())]
+    monkeypatch.setattr(models, "supabase", _SupabaseFalso({       # SEM a foto obrigatória
+        "checklists": checklists, "checklist_respostas": resp_rows, "checklist_fotos": [],
+        "checklist_template_itens": [{**i, "template_id": "t1", "ordem": n} for n, i in enumerate(itens)],
+        "checklist_template_horarios": [{**h, "template_id": "t1", "turno_id": 2, "ordem": n} for n, h in enumerate(horarios)],
+    }))
 
     r = models.listar_pendentes_assinatura()[0]
     assert (r["faltando_foto"], r["faltando"]) == (1, 1)           # vai ficar marcado como incompleto

@@ -407,3 +407,10 @@ Regra: todo conteúdo aparece **na tela** (checklists completos em formato de "f
 - `pages/2_📊_Dashboard.py`: fragmento com `run_every="15m"` recarrega a página inteira (limpa o cache) — dado nunca fica mais de ~15 min defasado (rondas são de 2 em 2 h). Botão "🔄 Atualizar agora" força na hora.
 - Mostra "⏳ Ainda sem assinatura no turno atual" (só quando a data é o dia de produção de hoje) pra cobrar no turno certo.
 - **Rondas em atraso** (`src/atrasos.py`, usado no Dashboard): ronda do turno atual cujo horário já passou e que não tem NENHUMA resposta. "Atrasada" = passou de `MARGEM_ATRASO_MINUTOS` (60 min, `src/turnos.py`); dentro da margem aparece como "na hora de fazer". Checklist já assinado não entra. Só aparece quando a data do Dashboard é o dia de produção de hoje.
+
+## Erro `httpx.LocalProtocolError` (tela vermelha esporádica)
+Causa: conexão HTTP/2 do Supabase compartilhada entre threads do Streamlit. `src/db.py` força HTTP/1.1 (`http2=False`). Se reaparecer: Manage app → Reboot.
+
+## Desempenho da aba "Pendentes de assinatura"
+`listar_pendentes_assinatura` busca respostas, fotos, itens e horários **em lote** (`in_`, de 40 em 40 checklists) — antes eram 2–4 consultas por checklist (lento com muitos pendentes).
+- `pages/8_📜_Histórico.py` guarda em memória (`st.cache_data`, 3 min) a lista de pendentes, o período e o checklist aberto. O cache é limpo ao assinar e no botão "🔄 Atualizar dados".

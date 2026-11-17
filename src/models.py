@@ -502,21 +502,55 @@ def listar_pendentes_assinatura(colaborador_id: str | None = None, dias: int = 3
         if chave_ordem(c["turno_id"], date.fromisoformat(str(c["data"])[:10])) < chave_atual
     ]
 
-    itens_por_template, horarios_por_chave, saida = {}, {}, []
-    for c in passados:
-        respostas = listar_respostas(c["id"])
-        if not respostas:
-            continue
+    saida = []
+    if not passados:
+        return saida
+
+    # Tudo em lote (poucas consultas), em vez de 2-4 consultas POR checklist.
+    ids = [c["id"] for c in passados]
+    respostas_por_ck: dict = {}
+    fotos_por_ck: dict = {}
+    for i in range(0, len(ids), 40):
+        lote = ids[i:i + 40]
+        for r in _todas_as_linhas(lambda: (
+            supabase.table("checklist_respostas")
+            .select("id, checklist_id, item_id, horario_id, resposta, observacao")
+            .in_("checklist_id", lote).order("id")
+        )):
+            respostas_por_ck.setdefault(r["checklist_id"], {})[(r["item_id"], r["horario_id"])] = {
+                "resposta": r["resposta"], "observacao": r["observacao"],
+            }
+        for f in _todas_as_linhas(lambda: (
+            supabase.table("checklist_fotos")
+            .select("id, checklist_id, item_id, horario_id, caminho, enviado_em")
+            .in_("checklist_id", lote).order("id")
+        )):
+            fotos_por_ck.setdefault(f["checklist_id"], []).append(f)
+
+    com_resposta = [c for c in passados if respostas_por_ck.get(c["id"])]
+    template_ids = list({c["template_id"] for c in com_resposta})
+    itens_por_template: dict = {}
+    horarios_por_chave: dict = {}
+    if template_ids:
+        for it in _todas_as_linhas(lambda: (
+            supabase.table("checklist_template_itens").select("*")
+            .in_("template_id", template_ids).order("ordem").order("id")
+        )):
+            itens_por_template.setdefault(it["template_id"], []).append(it)
+        for h in _todas_as_linhas(lambda: (
+            supabase.table("checklist_template_horarios").select("*")
+            .in_("template_id", template_ids).order("ordem").order("id")
+        )):
+            horarios_por_chave.setdefault((h["template_id"], h["turno_id"]), []).append(h)
+
+    for c in com_resposta:
+        respostas = respostas_por_ck[c["id"]]
         tid = c["template_id"]
-        if tid not in itens_por_template:
-            itens_por_template[tid] = listar_itens(tid)
-        chave_h = (tid, c["turno_id"])
-        if chave_h not in horarios_por_chave:
-            horarios_por_chave[chave_h] = listar_horarios(tid, c["turno_id"])
-        itens, horarios = itens_por_template[tid], horarios_por_chave[chave_h]
+        itens = itens_por_template.get(tid, [])
+        horarios = horarios_por_chave.get((tid, c["turno_id"]), [])
 
         sem_resposta = faltando_respostas(itens, respostas, horarios)
-        sem_foto = faltando_fotos(itens, respostas, agrupar_por_item(listar_fotos(c["id"])), horarios)
+        sem_foto = faltando_fotos(itens, respostas, agrupar_por_item(fotos_por_ck.get(c["id"], [])), horarios)
         saida.append({
             **c, "respondidas": len(respostas),
             "esperadas": contar_esperadas(itens, respostas, horarios),
