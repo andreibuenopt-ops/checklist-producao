@@ -676,6 +676,30 @@ with tab_checklists:
                         st.session_state[f"add_sub_{item['id']}"] = False
                         st.rerun()
 
+            with st.form(f"form_add_itens_{t['id']}", clear_on_submit=True):
+                st.markdown("**➕ Adicionar perguntas a este checklist**")
+                st.caption(
+                    "Uma pergunta por linha. Entram no FIM da lista e valem a partir de agora "
+                    "(checklists já assinados não mudam)."
+                )
+                novas_txt = st.text_area("Novas perguntas", height=140, key=f"novas_{t['id']}")
+                fa, fb, fc = st.columns(3)
+                crit_nova = fa.selectbox("Criticidade", ["media", "alta", "critica"], key=f"crit_novas_{t['id']}")
+                tipo_novo = fb.selectbox(
+                    "Tipo de resposta", ["sim_nao", "texto_livre"], key=f"tipo_novas_{t['id']}",
+                    format_func=lambda v: {"sim_nao": "Sim / Não / N-A", "texto_livre": "Texto livre"}[v],
+                )
+                foto_nova = fc.checkbox("Exigir foto", value=False, key=f"foto_novas_{t['id']}")
+                ok_novas = st.form_submit_button("Adicionar perguntas", type="primary")
+            if ok_novas:
+                lista_nova = [l.strip() for l in novas_txt.splitlines() if l.strip()]
+                if not lista_nova:
+                    st.error("Escreva pelo menos uma pergunta.")
+                else:
+                    adicionar_itens(t["id"], lista_nova, crit_nova, tipo_novo, exige_foto=foto_nova)
+                    st.success(f"{len(lista_nova)} pergunta(s) adicionada(s).")
+                    st.rerun()
+
             st.divider()
             if t["ativo"]:
                 if st.button("Desativar checklist", key=f"deact_{t['id']}"):
