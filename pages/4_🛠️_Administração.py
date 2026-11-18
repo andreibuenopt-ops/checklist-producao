@@ -538,8 +538,21 @@ with tab_checklists:
                             st.session_state[chave_edit_h] = True
                             st.rerun()
                         if c3.button("Remover", key=f"rm_h_{h['id']}"):
-                            remover_horario(h["id"])
+                            aviso = remover_horario(h["id"])
+                            if aviso:
+                                st.session_state[f"rm_conf_{h['id']}"] = aviso
                             st.rerun()
+                        if st.session_state.get(f"rm_conf_{h['id']}"):
+                            st.warning(f"⚠️ {st.session_state[f'rm_conf_{h['id']}']}")
+                            k1, k2 = st.columns(2)
+                            if k1.button("Apagar mesmo assim", type="primary", key=f"rm_ok_{h['id']}"):
+                                remover_horario(h["id"], apagar_historico=True)
+                                st.session_state.pop(f"rm_conf_{h['id']}", None)
+                                st.cache_data.clear()
+                                st.rerun()
+                            if k2.button("Cancelar", key=f"rm_no_{h['id']}"):
+                                st.session_state.pop(f"rm_conf_{h['id']}", None)
+                                st.rerun()
                     else:
                         partes = h["horario"].split(":")
                         hora_atual = time(int(partes[0]), int(partes[1]))

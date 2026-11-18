@@ -51,6 +51,17 @@ def faltando_respostas(itens: list, respostas: dict, horarios: list) -> int:
     )
 
 
+def listar_faltando(itens: list, respostas: dict, horarios: list) -> list:
+    """[{"horario": "06:30", "pergunta": ...}] das perguntas ativas sem resposta
+    (mesma regra de faltando_respostas) — pra mostrar o QUE falta."""
+    return [
+        {"horario": str(h.get("horario", ""))[:5], "pergunta": item.get("pergunta", ""), "filha": eh_filho}
+        for h in horarios
+        for item, eh_filho in itens_da_ronda(itens, respostas, h["id"])
+        if (item["id"], h["id"]) not in respostas
+    ]
+
+
 def contar_esperadas(itens: list, respostas: dict, horarios: list) -> int:
     """Total de respostas esperadas hoje (topo + filhas dos pais 'Sim')."""
     return sum(len(itens_da_ronda(itens, respostas, h["id"])) for h in horarios)

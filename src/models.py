@@ -7,8 +7,8 @@ from datetime import date, timedelta
 from pathlib import Path
 
 from src.db import supabase
-from src.fotos import agrupar_por_item, carregar_bytes, listar_fotos
-from src.itens import contar_esperadas, faltando_fotos, faltando_respostas
+from src.fotos import agrupar_por_item, carregar_bytes, listar_fotos, remover_fotos
+from src.itens import contar_esperadas, faltando_fotos, faltando_respostas, listar_faltando
 from src.turnos import chave_ordem, turno_anterior, turno_e_data_referencia
 
 
@@ -256,8 +256,31 @@ def definir_horarios_turnos(template_id: str, horarios_por_turno: dict):
         ).execute()
 
 
-def remover_horario(horario_id: str):
+def _contar(tabela: str, horario_id: str) -> int:
+    res = supabase.table(tabela).select("id", count="exact").eq("horario_id", horario_id).limit(1).execute()
+    return res.count or 0
+
+
+def remover_horario(horario_id: str, apagar_historico: bool = False) -> str | None:
+    """Remove uma ronda. Se ela já tem respostas/fotos/justificativas gravadas
+    em checklists, o banco NÃO deixa apagar (histórico aponta pra ela): sem
+    `apagar_historico` devolve uma mensagem explicando; com ele, apaga também
+    esse histórico da ronda e remove. None = removido."""
+    n_resp = _contar("checklist_respostas", horario_id)
+    n_fotos = _contar("checklist_fotos", horario_id)
+    n_just = _contar("checklist_justificativas_atraso", horario_id)
+    if (n_resp or n_fotos or n_just) and not apagar_historico:
+        return (
+            f"Essa ronda já tem histórico gravado ({n_resp} respostas, {n_fotos} fotos). "
+            "Remover apaga também esse histórico dela."
+        )
+    if n_fotos:
+        fotos = supabase.table("checklist_fotos").select("id, caminho").eq("horario_id", horario_id).execute().data
+        remover_fotos(fotos)
+    supabase.table("checklist_justificativas_atraso").delete().eq("horario_id", horario_id).execute()
+    supabase.table("checklist_respostas").delete().eq("horario_id", horario_id).execute()
     supabase.table("checklist_template_horarios").delete().eq("id", horario_id).execute()
+    return None
 
 
 MAX_HORARIOS_POR_TURNO = 6
@@ -555,6 +578,7 @@ def listar_pendentes_assinatura(colaborador_id: str | None = None, dias: int = 3
             **c, "respondidas": len(respostas),
             "esperadas": contar_esperadas(itens, respostas, horarios),
             "faltando_foto": sem_foto,
+            "lista_faltando": listar_faltando(itens, respostas, horarios),
             # incompleto = falta resposta OU falta foto obrigatória
             "faltando": sem_resposta + sem_foto,
         })

@@ -145,6 +145,10 @@ with aba_pend:
         pend = st.selectbox("Checklist pendente", options=pendentes, format_func=_rotulo_pendente, key="pend_sel")
         renderizar_checklist_somente_leitura(_checklist_cache(pend["id"]), resumido=True)
 
+        if pend.get("lista_faltando"):
+            with st.expander(f"Ver as {len(pend['lista_faltando'])} perguntas sem resposta"):
+                for f in pend["lista_faltando"]:
+                    st.write(f"• Ronda {f['horario']} — {'↳ ' if f['filha'] else ''}{f['pergunta']}")
         if pend["faltando"]:
             st.warning(
                 f"⚠️ Faltam {pend['faltando']} de {pend['esperadas']} respostas. Se assinar agora, "

@@ -414,3 +414,8 @@ Causa: conexão HTTP/2 do Supabase compartilhada entre threads do Streamlit. `sr
 ## Desempenho da aba "Pendentes de assinatura"
 `listar_pendentes_assinatura` busca respostas, fotos, itens e horários **em lote** (`in_`, de 40 em 40 checklists) — antes eram 2–4 consultas por checklist (lento com muitos pendentes).
 - `pages/8_📜_Histórico.py` guarda em memória (`st.cache_data`, 3 min) a lista de pendentes, o período e o checklist aberto. O cache é limpo ao assinar e no botão "🔄 Atualizar dados".
+
+## Remover ronda (horário) que já tem histórico
+`remover_horario` não apaga direto se já existem respostas/fotos/justificativas daquela ronda (FK no banco → `APIError`). A tela de Administração mostra o aviso e o botão "Apagar mesmo assim" (apaga o histórico da ronda). Para só mudar o horário, use **Editar** (mantém o histórico).
+## "Faltam N perguntas" nos pendentes
+Aba Pendentes mostra "Ver as N perguntas sem resposta" (ronda + pergunta). Filhas só contam quando o pai está "Sim"; o que costuma faltar é ronda inteira não preenchida.
