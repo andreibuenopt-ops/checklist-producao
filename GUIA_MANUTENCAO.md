@@ -419,3 +419,12 @@ Causa: conexão HTTP/2 do Supabase compartilhada entre threads do Streamlit. `sr
 `remover_horario` não apaga direto se já existem respostas/fotos/justificativas daquela ronda (FK no banco → `APIError`). A tela de Administração mostra o aviso e o botão "Apagar mesmo assim" (apaga o histórico da ronda). Para só mudar o horário, use **Editar** (mantém o histórico).
 ## "Faltam N perguntas" nos pendentes
 Aba Pendentes mostra "Ver as N perguntas sem resposta" (ronda + pergunta). Filhas só contam quando o pai está "Sim"; o que costuma faltar é ronda inteira não preenchida.
+
+## Adicionar perguntas a um checklist existente
+Administração → Checklists cadastrados → (abrir o checklist) → formulário **➕ Adicionar perguntas a este checklist** (fim da lista de itens): uma por linha, com criticidade, tipo (Sim/Não ou texto livre) e "Exigir foto". Entram no fim; vale a partir de agora.
+
+## Rede caindo / recarregar a página (e-mail do Jaison, 23/11)
+Causa: o Streamlit perde o login (`st.session_state`) quando a página recarrega ou o navegador reconecta, e o que estava marcado no formulário (ainda não enviado) se perde junto.
+- **Login persistente** (`src/sessao.py`): token assinado (HMAC, 14 h) na URL `?s=...`; `exigir_login()` restaura o usuário ao recarregar. "Sair" remove o token. Segredo: `SESSION_SECRET` nos secrets (opcional; senão usa `SUPABASE_KEY`). Quem copiar a URL completa entra como aquele usuário até vencer.
+- **Rascunho no aparelho** (`src/rascunho.py`, ligado em `src/preenchimento_ui.py`): JS guarda no `localStorage` o que foi marcado/digitado e restaura ao reabrir — só o que ainda não está salvo no banco; apagado após "Atualizar respostas". Testado em navegador real (Playwright). Não funciona offline de verdade: **para gravar no banco ainda é preciso rede** (apertar "Atualizar respostas").
+- Não cobre ainda: página de Parada de Linha e fotos (fotos não entram no rascunho).

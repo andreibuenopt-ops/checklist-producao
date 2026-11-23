@@ -26,6 +26,7 @@ from datetime import date
 import streamlit as st
 
 from src.auth import autenticar
+from src.rascunho import rascunho_local
 from src.fotos import (
     MAX_FOTOS_POR_ITEM, agrupar_por_item, baixar_miniatura, enviar_foto, listar_fotos, remover_fotos_de_itens,
 )
@@ -317,6 +318,7 @@ def renderizar_preenchimento(usuario, template: dict):
                     faltando += 1
 
         qtd_salva = salvar_respostas_em_lote(mudancas)
+        st.session_state[f"limpar_rascunho_{checklist['id']}"] = True   # gravou: rascunho local não é mais necessário
         for m in mudancas:
             respostas_salvas[(m["item_id"], m["horario_id"])] = {
                 "resposta": m["resposta"], "observacao": m["observacao"],
@@ -414,6 +416,19 @@ def renderizar_preenchimento(usuario, template: dict):
             st.rerun()
         for tipo_msg, texto_msg in mensagens:
             getattr(st, tipo_msg)(texto_msg)
+
+    # Rede de segurança: rascunho das marcações no aparelho (localStorage). Se a
+    # página recarregar / a rede cair antes de "Atualizar respostas", o que foi
+    # marcado volta sozinho. Nunca sobrescreve o que já está salvo no banco.
+    _chaves_salvas = set()
+    for (_i, _h), _r in respostas_salvas.items():
+        _chaves_salvas.add(f"resp_{checklist['id']}_{_i}_{_h}")
+        if _r.get("observacao"):
+            _chaves_salvas.add(f"obs_{checklist['id']}_{_i}_{_h}")
+    rascunho_local(
+        checklist["id"], _chaves_salvas,
+        limpar=st.session_state.pop(f"limpar_rascunho_{checklist['id']}", False),
+    )
 
     estado = st.session_state[chave_estado]
     tem_nao = estado["tem_nao"]

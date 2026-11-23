@@ -12,6 +12,7 @@ import streamlit as st
 
 from src.db import supabase
 from src.models import obter_autocadastro_requer_aprovacao
+from src.sessao import PARAM as _PARAM_SESSAO, gravar_token_na_url, remover_token_da_url, validar_token
 
 
 @dataclass
@@ -132,9 +133,37 @@ def autenticar(identificador: str, senha: str):
     return usuario, None
 
 
+def _usuario_por_id(usuario_id: str) -> Usuario | None:
+    """Recarrega o usuário do banco (papel/ativo sempre atuais) — usado pra
+    restaurar o login a partir do token da URL."""
+    try:
+        try:
+            res = supabase.table("usuarios").select(
+                "id,nome,email,matricula,papel,ativo,senha_temporaria,turma").eq("id", usuario_id).limit(1).execute()
+        except Exception:   # coluna turma ainda não existe
+            res = supabase.table("usuarios").select(
+                "id,nome,email,matricula,papel,ativo,senha_temporaria").eq("id", usuario_id).limit(1).execute()
+        if not res.data or not res.data[0].get("ativo"):
+            return None
+        u = _usuario_from_row(res.data[0])
+        u.turma = res.data[0].get("turma") or None
+        return u
+    except Exception:
+        return None
+
+
 def exigir_login() -> Usuario:
     if "usuario" in st.session_state:
+        gravar_token_na_url(st.session_state["usuario"].id)
         return st.session_state["usuario"]
+
+    # Recarregou a página / reconectou: o token assinado da URL devolve o login.
+    uid = validar_token(st.query_params.get(_PARAM_SESSAO))
+    if uid:
+        restaurado = _usuario_por_id(uid)
+        if restaurado:
+            st.session_state["usuario"] = restaurado
+            return restaurado
 
     st.title("🔐 Login")
 
@@ -151,6 +180,7 @@ def exigir_login() -> Usuario:
             usuario, erro = autenticar(identificador, senha)
             if usuario:
                 st.session_state["usuario"] = usuario
+                gravar_token_na_url(usuario.id)
                 st.rerun()
             else:
                 st.error(erro)
@@ -209,6 +239,7 @@ def exigir_login() -> Usuario:
 
 def logout():
     st.session_state.pop("usuario", None)
+    remover_token_da_url()
 
 
 PAPEIS_VALIDOS = ("producao", "supervisor", "coordenacao", "administrador", "master")
