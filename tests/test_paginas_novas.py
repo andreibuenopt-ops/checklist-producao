@@ -106,3 +106,40 @@ def test_historico_mostra_a_turma_do_colaborador_e_filtra_por_ela():
     [s for s in at.selectbox if s.key == "hist_turma"][0].set_value("A")
     at.run()
     assert not any("Nenhum checklist nesse filtro" in i.value for i in at.info)
+
+
+def test_historico_filtra_por_equipe(monkeypatch):
+    monkeypatch.setenv("TESTE_EQUIPE", "com")
+    at = AppTest.from_file(HIST, default_timeout=30)
+    at.run()
+    assert not at.exception
+    sb = [s for s in at.selectbox if s.key == "equipe_hist"][0]
+    assert sb.value is None                                  # começa em "Todas as equipes"
+    sb.set_value("e1")
+    at.run()
+    assert not at.exception
+    assert not any("Nenhum checklist nesse filtro" in i.value for i in at.info)    # u1 é da equipe
+
+
+def test_historico_equipe_sem_a_pessoa_esconde_os_checklists(monkeypatch):
+    monkeypatch.setenv("TESTE_EQUIPE", "sem")
+    at = AppTest.from_file(HIST, default_timeout=30)
+    at.run()
+    [s for s in at.selectbox if s.key == "equipe_hist"][0].set_value("e1")
+    at.run()
+    assert not at.exception
+    assert any("Nenhum checklist nesse filtro" in i.value for i in at.info)
+
+
+def test_aderencia_aba_por_equipe(monkeypatch):
+    monkeypatch.setenv("TESTE_EQUIPE", "com")
+    at = AppTest.from_file(ADER, default_timeout=30)
+    at.run()
+    assert not at.exception
+    rotulos = {m.label: m.value for m in at.metric}
+    assert rotulos["Concluídos pela equipe"] == "1"          # c2 é de gente de fora
+    assert rotulos["Assinados incompletos"] in ("0", "1")    # (a aba geral também tem esse rótulo)
+    # só 'Ana' (u1) está no período; Zezinho saiu em 01/11 (antes do período)
+    tabelas = [df.value for df in at.dataframe]
+    assert any("Ana" in list(d["Pessoa"]) and "Zezinho" not in list(d["Pessoa"]) for d in tabelas if "Pessoa" in d)
+    assert any("Vazamento?" in list(d["Pergunta"]) and "Outra?" not in list(d["Pergunta"]) for d in tabelas if "Pergunta" in d)

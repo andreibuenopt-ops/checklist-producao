@@ -42,4 +42,25 @@ models_mod.obter_logo_url_com_fallback = lambda: None
 models_mod.obter_logo_bytes_com_fallback = lambda: None
 aderencia_mod.montar_relatorio = _relatorio
 
+import src.equipes_ui as eq_ui
+
+_MODO_EQUIPE = os.environ.get("TESTE_EQUIPE")
+if _MODO_EQUIPE:
+    eq_ui._equipes_cache = lambda: [{"id": "e1", "nome": "Equipe Eduardo"}]
+    eq_ui._indice_cache = lambda eid: {"u1": [(date(2026, 1, 1), None)], "u2": [(date(2026, 1, 1), date(2026, 11, 1))]}
+    _hoje = date.today()
+    models_mod.listar_checklists_periodo = lambda ini, fim, template_id=None, status=None: [
+        {"id": "c1", "template_id": "t1", "turno_id": 1, "data": _hoje.isoformat(), "status": "completo", "incompleto": False,
+         "colaborador_id": "u1", "supervisor_id": "x", "checklist_templates": {"area": "Prensa"}},
+        {"id": "c2", "template_id": "t1", "turno_id": 2, "data": _hoje.isoformat(), "status": "completo", "incompleto": True,
+         "colaborador_id": "fora", "supervisor_id": "fora2", "checklist_templates": {"area": "Lixa"}},
+    ]
+    models_mod.nomes_usuarios = lambda ids: {"u1": "Ana", "u2": "Zezinho"}
+    models_mod.respostas_nao_periodo = lambda ini, fim: [
+        {"checklists": {"data": _hoje.isoformat(), "colaborador_id": "u1", "supervisor_id": None,
+                        "checklist_templates": {"area": "Prensa"}}, "checklist_template_itens": {"pergunta": "Vazamento?"}},
+        {"checklists": {"data": _hoje.isoformat(), "colaborador_id": "fora", "supervisor_id": None,
+                        "checklist_templates": {"area": "Lixa"}}, "checklist_template_itens": {"pergunta": "Outra?"}},
+    ]
+
 exec(open(Path(__file__).resolve().parent.parent.parent / "pages" / "9_📈_Aderência.py", encoding="utf-8").read())

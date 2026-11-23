@@ -8,7 +8,13 @@ import streamlit as st
 
 from src.aderencia import montar_relatorio
 from src.auth import exigir_login
-from src.models import obter_logo_bytes_com_fallback
+from collections import Counter
+
+from src.equipes_logica import filtrar_checklists, pertence, resumo_membros
+from src.equipes_ui import seletor_equipe
+from src.models import (
+    listar_checklists_periodo, nomes_usuarios, obter_logo_bytes_com_fallback, respostas_nao_periodo,
+)
 from src.pdf_relatorio_mensal import gerar_csv_relatorio, gerar_pdf_relatorio_mensal
 from src.sidebar import mostrar_usuario_logado
 from src.tema import aplicar_tema, desativar_traducao_automatica
@@ -54,7 +60,7 @@ def _metricas(g: dict):
     c[4].metric("Assinados incompletos", g["incompletos"])
 
 
-aba_indice, aba_mensal = st.tabs(["🏆 O que mais ficam sem preencher", "🗓️ Relatório mensal"])
+aba_indice, aba_mensal, aba_equipe = st.tabs(["🏆 O que mais ficam sem preencher", "🗓️ Relatório mensal", "👥 Por equipe"])
 
 # ---------------------------------------------------------------------
 with aba_indice:
@@ -151,3 +157,81 @@ with aba_mensal:
             st.dataframe(pd.DataFrame([{
                 "Checklist": i["area"], "Pergunta": i["pergunta"], "Qtd.": i["qtd"],
             } for i in rel["itens_mais_nao"]]), hide_index=True, use_container_width=True)
+
+
+# ---------------------------------------------------------------------
+# Por equipe: quem preencheu / quem ficou sem preencher / o que reportaram
+# ---------------------------------------------------------------------
+@st.cache_data(ttl=180, show_spinner="Carregando…")
+def _checklists_periodo(inicio: date, fim: date):
+    return listar_checklists_periodo(inicio, fim)
+
+
+@st.cache_data(ttl=180, show_spinner=False)
+def _nao_periodo(inicio: date, fim: date):
+    return respostas_nao_periodo(inicio, fim)
+
+
+with aba_equipe:
+    equipe_a, indice_a = seletor_equipe("ader", obrigatoria=True)
+    if equipe_a is None:
+        st.info("Nenhuma equipe cadastrada ainda. Cadastre em Administração → 👥 Equipes.")
+    else:
+        per_eq = st.date_input(
+            "Período (dia de produção)", value=(hoje_producao - timedelta(days=13), hoje_producao),
+            max_value=hoje_producao, key="ader_eq_periodo",
+        )
+        if not (isinstance(per_eq, (tuple, list)) and len(per_eq) == 2):
+            st.info("Escolha a data inicial e a final.")
+        else:
+            ini, fim_ = per_eq
+            todos = [c for c in _checklists_periodo(ini, fim_) if c["status"] != "pendente"]
+            da_equipe = filtrar_checklists(todos, indice_a)
+            concl = [c for c in da_equipe if c["status"] == "completo"]
+            m = st.columns(4)
+            m[0].metric("Concluídos pela equipe", len(concl))
+            m[1].metric("Assinados incompletos", sum(1 for c in concl if c.get("incompleto")))
+            m[2].metric("Em andamento / sem assinar", len(da_equipe) - len(concl))
+            linhas_eq = resumo_membros(indice_a, da_equipe, ini, fim_, hoje=hoje_producao)
+            m[3].metric("Pessoas com dias sem preencher", sum(1 for l in linhas_eq if l["dias_sem"]))
+
+            st.subheader("Por pessoa")
+            nomes_eq = nomes_usuarios(tuple(l["usuario_id"] for l in linhas_eq))
+            st.caption(
+                "Dias sem preenchimento = dias em que a pessoa era da equipe e não preencheu nem assinou nada "
+                "(inclui folgas e férias — confira com a escala)."
+            )
+            st.dataframe(pd.DataFrame([
+                {"Pessoa": nomes_eq.get(l["usuario_id"], "-"), "Preencheu": l["preencheu"], "Assinou": l["assinou"],
+                 "Dias na equipe": l["dias_ativos"], "Dias com atividade": l["dias_com_atividade"],
+                 "Dias sem preencher": l["dias_sem"],
+                 "Último dia sem": l["ultimo_dia_sem"].strftime("%d/%m") if l["ultimo_dia_sem"] else "—"}
+                for l in linhas_eq
+            ]), use_container_width=True, hide_index=True)
+
+            st.subheader("Por checklist")
+            por_area = Counter((c.get("checklist_templates") or {}).get("area", "-") for c in concl)
+            if por_area:
+                st.dataframe(pd.DataFrame(
+                    [{"Checklist": a, "Concluídos": n} for a, n in por_area.most_common()]
+                ), use_container_width=True, hide_index=True)
+            else:
+                st.caption("Nenhum checklist concluído pela equipe nesse período.")
+
+            st.subheader("O que a equipe reportou como \"Não\"")
+            nao_eq = [
+                r for r in _nao_periodo(ini, fim_)
+                if pertence(indice_a, r["checklists"].get("colaborador_id"), r["checklists"]["data"])
+                or pertence(indice_a, r["checklists"].get("supervisor_id"), r["checklists"]["data"])
+            ]
+            if nao_eq:
+                cont = Counter(
+                    ((r["checklists"]["checklist_templates"] or {}).get("area", "-"),
+                     (r["checklist_template_itens"] or {}).get("pergunta", "-"))
+                    for r in nao_eq
+                )
+                st.dataframe(pd.DataFrame(
+                    [{"Checklist": a, "Pergunta": p, "Vezes 'Não'": n} for (a, p), n in cont.most_common(20)]
+                ), use_container_width=True, hide_index=True)
+            else:
+                st.caption("Nenhuma resposta \"Não\" da equipe nesse período.")

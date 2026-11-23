@@ -34,7 +34,8 @@ def rondas_pendentes(templates: list, horarios: list, checklists: list, feitos: 
                 "titulo": t["titulo"], "area": t.get("area", ""), "horario": str(h["horario"])[:5],
                 "atraso_min": atraso_min,
                 "atrasada": agora > programado + timedelta(minutes=MARGEM_ATRASO_MINUTOS),
-                "iniciado": bool(ck),
+                "iniciado": bool(ck), "colaborador_id": ck.get("colaborador_id") if ck else None,
+                "data": str(data_ref)[:10],
             })
     return sorted(linhas, key=lambda l: -l["atraso_min"])
 

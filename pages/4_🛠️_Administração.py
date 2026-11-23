@@ -4,6 +4,11 @@ from datetime import time
 
 import streamlit as st
 
+from datetime import date as _date
+
+from src.equipes import (
+    adicionar_membros, criar_equipe, definir_equipe_ativa, encerrar_membro, listar_equipes, listar_membros, transferir,
+)
 from src.fotos import remover_fotos_antigas, uso_armazenamento
 from src.itens import separar_itens
 from src.paradas import (
@@ -63,9 +68,9 @@ if not usuario.pode_gerenciar_sistema:
     st.stop()
 
 st.title("🛠️ Administração")
-tab_visual, tab_usuarios, tab_equipamentos, tab_novo_checklist, tab_checklists, tab_armazenamento, tab_paradas = st.tabs(
+tab_visual, tab_usuarios, tab_equipamentos, tab_novo_checklist, tab_checklists, tab_armazenamento, tab_paradas, tab_equipes = st.tabs(
     ["🎨 Identidade Visual", "👤 Usuários", "🔧 Áreas/Equipamentos", "➕ Novo Checklist",
-     "📋 Checklists Cadastrados", "💾 Armazenamento", "🛑 Paradas"]
+     "📋 Checklists Cadastrados", "💾 Armazenamento", "🛑 Paradas", "👥 Equipes"]
 )
 
 NIVEIS = {
@@ -805,3 +810,87 @@ with tab_paradas:
                         adicionar_itens_parada(tipo_chave, novas, exige_novas)
                         st.success(f"{len(novas)} pergunta(s) adicionada(s).")
                         st.rerun()
+
+
+# =====================================================================
+# TAB — Equipes (grupo fechado de um líder, independente de turno/turma)
+# =====================================================================
+with tab_equipes:
+    st.subheader("Equipes")
+    st.caption(
+        "Equipe = grupo de um líder (ex.: Equipe do Eduardo), de qualquer turno/turma. Use as pessoas **já cadastradas** — "
+        "é só ligar na equipe. Cada pessoa tem **data de entrada e de saída**: ao transferir (ex.: Zezinho do Eduardo "
+        "para o Arivonildo), o que ele fez antes continua na equipe antiga. Uma pessoa pode estar em mais de uma equipe."
+    )
+    todos_usuarios = [u for u in listar_usuarios() if u["ativo"]]
+    nome_de = {u["id"]: u["nome"] for u in listar_usuarios()}
+    lideres_possiveis = [u for u in todos_usuarios if u["papel"] in ("supervisor", "coordenacao", "administrador", "master")]
+
+    with st.form("form_nova_equipe", clear_on_submit=True):
+        st.markdown("**➕ Nova equipe**")
+        ne1, ne2 = st.columns(2)
+        nome_equipe = ne1.text_input("Nome da equipe", placeholder="Equipe Eduardo")
+        lider_sel = ne2.selectbox(
+            "Líder (supervisor)", options=[None] + [u["id"] for u in lideres_possiveis],
+            format_func=lambda i: "— sem líder —" if i is None else nome_de.get(i, i),
+        )
+        if st.form_submit_button("Criar equipe", type="primary"):
+            if not nome_equipe.strip():
+                st.error("Informe o nome da equipe.")
+            else:
+                try:
+                    criar_equipe(nome_equipe, lider_sel)
+                    st.success("Equipe criada. Agora adicione as pessoas abaixo.")
+                    st.rerun()
+                except Exception:
+                    st.error("Não consegui criar (já existe equipe com esse nome? O SQL migration_equipes.sql foi rodado?).")
+
+    equipes_todas = listar_equipes(apenas_ativas=False)
+    if not equipes_todas:
+        st.info("Nenhuma equipe ainda.")
+    for eq in equipes_todas:
+        membros = listar_membros(eq["id"])
+        ativos = [m for m in membros if not m.get("fim")]
+        encerrados = [m for m in membros if m.get("fim")]
+        titulo = f"{'' if eq['ativa'] else '⛔ '}{eq['nome']} — líder: {nome_de.get(eq.get('lider_id'), '—')} · {len(ativos)} pessoa(s)"
+        with st.expander(titulo):
+            outras = [e for e in equipes_todas if e["id"] != eq["id"] and e["ativa"]]
+            for m in ativos:
+                c1, c2 = st.columns([3, 2])
+                c1.write(f"👤 **{nome_de.get(m['usuario_id'], m['usuario_id'])}** · desde {_date.fromisoformat(str(m['inicio'])[:10]).strftime('%d/%m/%Y')}")
+                with c2.popover("Transferir / tirar", use_container_width=True):
+                    data_troca = st.date_input("A partir de", value=_date.today(), key=f"eq_troca_dt_{m['id']}")
+                    destino = st.selectbox(
+                        "Para a equipe", options=[None] + [e["id"] for e in outras],
+                        format_func=lambda i: "— só tirar desta equipe —" if i is None else next(e["nome"] for e in outras if e["id"] == i),
+                        key=f"eq_troca_dest_{m['id']}",
+                    )
+                    if st.button("Confirmar", key=f"eq_troca_ok_{m['id']}", type="primary"):
+                        if destino:
+                            transferir(m["id"], m["usuario_id"], destino, data_troca)
+                        else:
+                            encerrar_membro(m["id"], data_troca)
+                        st.rerun()
+
+            ids_ativos = {m["usuario_id"] for m in ativos}
+            candidatos = [u for u in todos_usuarios if u["id"] not in ids_ativos]
+            with st.form(f"form_add_membros_{eq['id']}", clear_on_submit=True):
+                novos = st.multiselect(
+                    "Adicionar pessoas", options=[u["id"] for u in candidatos], format_func=lambda i: nome_de.get(i, i),
+                    key=f"eq_add_{eq['id']}",
+                )
+                entrou = st.date_input("Entrou em", value=_date.today(), key=f"eq_add_dt_{eq['id']}",
+                                       help="Para trazer o histórico antigo, escolha uma data passada.")
+                if st.form_submit_button("Adicionar à equipe"):
+                    if novos:
+                        adicionar_membros(eq["id"], novos, entrou)
+                        st.rerun()
+                    else:
+                        st.warning("Escolha ao menos uma pessoa.")
+            if encerrados:
+                st.caption("Já saíram: " + " · ".join(
+                    f"{nome_de.get(m['usuario_id'], '?')} (até {_date.fromisoformat(str(m['fim'])[:10]).strftime('%d/%m/%Y')})" for m in encerrados
+                ))
+            if st.checkbox("Equipe ativa", value=eq["ativa"], key=f"eq_ativa_{eq['id']}") != eq["ativa"]:
+                definir_equipe_ativa(eq["id"], not eq["ativa"])
+                st.rerun()

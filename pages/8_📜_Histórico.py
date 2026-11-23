@@ -17,6 +17,8 @@ from src.models import (
     obter_checklist_completo,
     obter_logo_bytes_com_fallback,
 )
+from src.equipes_logica import filtrar_checklists
+from src.equipes_ui import seletor_equipe
 from src.sidebar import mostrar_usuario_logado
 from src.tema import aplicar_tema, desativar_traducao_automatica
 from src.turnos import LETRA_TURNO, NOME_TURNO, turno_e_data_referencia
@@ -55,6 +57,9 @@ def _checklist_cache(checklist_id):
 if st.button("🔄 Atualizar dados", help="Os dados ficam em memória por 3 min. Use pra buscar agora."):
     st.cache_data.clear()
     st.rerun()
+equipe_sel, indice_equipe = seletor_equipe("hist")
+if equipe_sel:
+    st.caption(f"👥 Mostrando só o que foi preenchido ou assinado por pessoas da **{equipe_sel['nome']}**.")
 aba_hist, aba_pend, aba_par = st.tabs(["📜 Histórico", "✍️ Pendentes de assinatura", "🛑 Paradas"])
 
 
@@ -104,6 +109,8 @@ with aba_hist:
         if turno_sel != "Todos":
             alvo = {"A Manhã": 1, "B Tarde": 2, "C Noite": 3}[turno_sel]
             linhas = [c for c in linhas if c["turno_id"] == alvo]
+        if indice_equipe is not None:
+            linhas = filtrar_checklists(linhas, indice_equipe)
 
         pessoas = dados_usuarios({c.get("colaborador_id") for c in linhas})
         if turma_sel != "Todas":
@@ -132,6 +139,8 @@ with aba_pend:
     pendentes = _pendentes_cache(usuario.id if so_meus else None)
     if so_meus:
         st.caption("Mostrando os checklists que você preencheu.")
+    if indice_equipe is not None:
+        pendentes = filtrar_checklists(pendentes, indice_equipe)
 
     if not pendentes:
         st.success("Nenhum checklist pendente de assinatura. ✅")
@@ -177,6 +186,8 @@ with aba_par:
         st.info("Escolha a data inicial e a final.")
     else:
         paradas_hist = listar_paradas_periodo(per_par[0], per_par[1], None if tipo_sel == "Todos" else tipo_sel)
+        if indice_equipe is not None:
+            paradas_hist = filtrar_checklists(paradas_hist, indice_equipe)
         if not paradas_hist:
             st.info("Nenhuma parada registrada nesse filtro.")
         else:

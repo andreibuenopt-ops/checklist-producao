@@ -20,6 +20,8 @@ from src.models import (
     respostas_por_data,
 )
 from src.historico_ui import botao_pdf_checklist, renderizar_checklist_folha, renderizar_checklist_somente_leitura
+from src.equipes_logica import checklist_e_da_equipe, filtrar_checklists, pertence, resumo_membros
+from src.equipes_ui import seletor_equipe
 from src.atrasos import formatar_atraso, rondas_pendentes
 from src.pdf_dashboard import gerar_pdf_dashboard
 from src.turnos import agora_local, formatar_datahora_local, turno_e_data_referencia
@@ -86,7 +88,9 @@ with col_area:
     nomes_areas = ["Todas as áreas"] + [t["titulo"] for t in templates]
     area_escolhida = st.selectbox("Área", nomes_areas)
 
+equipe_sel, indice_equipe = seletor_equipe("dash")
 checklists_todos = checklists_do_dia(data_ref)
+checklists_todos_geral = checklists_todos     # sem filtro de equipe (as rondas em atraso precisam enxergar tudo)
 if filtro_tipo_area != "Todos":
     checklists_todos = [
         c for c in checklists_todos
@@ -94,6 +98,9 @@ if filtro_tipo_area != "Todos":
     ]
 if area_escolhida != "Todas as áreas":
     checklists_todos = [c for c in checklists_todos if c["checklist_templates"]["titulo"] == area_escolhida]
+
+if indice_equipe is not None:
+    checklists_todos = filtrar_checklists(checklists_todos, indice_equipe)
 
 # Só o que foi assinado conta ou aparece em qualquer lugar — em andamento
 # não debita de "não iniciados" nem entra na tabela/exportação.
@@ -133,9 +140,15 @@ criticas_nao = sum(
 )
 
 c1, c2, c3, c4, c5 = st.columns(5)
-c1.metric("Checklists esperados", esperados)
-c2.metric("Concluídos", completos)
-c3.metric("Não iniciados", nao_iniciados)
+if indice_equipe is None:
+    c1.metric("Checklists esperados", esperados)
+    c2.metric("Concluídos", completos)
+    c3.metric("Não iniciados", nao_iniciados)
+else:   # esperado/não iniciado não tem "dono": com equipe, mostra o que a equipe fez e quem falta
+    _resumo_eq = resumo_membros(indice_equipe, checklists_todos, data_ref, data_ref, hoje=data_ref)
+    c1.metric("Concluídos pela equipe", completos)
+    c2.metric("Em andamento (equipe)", len(checklists_todos) - completos)
+    c3.metric("Pessoas sem preenchimento", sum(1 for l in _resumo_eq if l["dias_sem"]))
 c4.metric("Conformidade (Sim)", f"{conformidade:.0f}%" if conformidade is not None else "—")
 c5.metric("'Não' em itens críticos", criticas_nao, delta_color="inverse")
 
@@ -143,25 +156,32 @@ c5.metric("'Não' em itens críticos", criticas_nao, delta_color="inverse")
 _ref = turno_e_data_referencia()
 if data_ref == _ref.data_referencia:
     _assinados = {
-        c["checklist_templates"]["titulo"] for c in checklists_todos
+        c["checklist_templates"]["titulo"] for c in checklists_todos_geral
         if c["status"] == "completo" and c["turno_id"] == _ref.turno_id
     }
     _faltam = [t["titulo"] for t in templates if t["titulo"] not in _assinados]
+    if indice_equipe is not None:   # só os em andamento que são da equipe
+        _faltam = [
+            c["checklist_templates"]["titulo"] for c in checklists_todos
+            if c["status"] != "completo" and c["turno_id"] == _ref.turno_id
+        ]
     if area_escolhida != "Todas as áreas":
         _faltam = [t for t in _faltam if t == area_escolhida]
     # Rondas em atraso (horário já passou e nada foi respondido)
-    _ids_turno = [c["id"] for c in checklists_todos if c["turno_id"] == _ref.turno_id]
+    _ids_turno = [c["id"] for c in checklists_todos_geral if c["turno_id"] == _ref.turno_id]
     _pend = rondas_pendentes(
-        templates, horarios_do_turno(_ref.turno_id), checklists_todos,
+        templates, horarios_do_turno(_ref.turno_id), checklists_todos_geral,
         rondas_com_resposta(_ids_turno), _ref.data_referencia, _ref.turno_id, _ref.nome, agora_local(),
     )
+    if indice_equipe is not None:   # ronda iniciada por alguém da equipe; sem responsável ainda fica visível
+        _pend = [p for p in _pend if not p["iniciado"] or pertence(indice_equipe, p["colaborador_id"], p["data"])]
     _atrasadas = [p for p in _pend if p["atrasada"]]
     _na_hora = [p for p in _pend if not p["atrasada"]]
     if _atrasadas:
         with st.expander(f"🚨 Rondas em ATRASO no turno atual ({_ref.nome}) — {len(_atrasadas)}", expanded=True):
             for p in _atrasadas:
                 st.write(f"• **{p['titulo']}** — ronda das {p['horario']} · atrasada {formatar_atraso(p['atraso_min'])}"
-                         + ("" if p["iniciado"] else " · não iniciado"))
+                         + ("" if p["iniciado"] else " · não iniciado (sem responsável)"))
     if _na_hora:
         with st.expander(f"🕒 Rondas na hora de fazer (ainda dentro da margem) — {len(_na_hora)}", expanded=False):
             for p in _na_hora:
@@ -174,6 +194,16 @@ if data_ref == _ref.data_referencia:
                 st.write(f"• {t}")
     else:
         st.success(f"Todos os checklists do turno atual ({_ref.nome}) já foram assinados. ✅")
+
+if indice_equipe is not None:
+    st.subheader(f"👥 {equipe_sel['nome']} — quem preencheu neste dia")
+    _linhas_eq = resumo_membros(indice_equipe, checklists_todos, data_ref, data_ref, hoje=data_ref)
+    _nomes_eq = nomes_usuarios(tuple(l["usuario_id"] for l in _linhas_eq))
+    st.dataframe(pd.DataFrame([
+        {"Pessoa": _nomes_eq.get(l["usuario_id"], "-"), "Preencheu": l["preencheu"], "Assinou": l["assinou"],
+         "Situação": "✅ teve atividade" if not l["dias_sem"] else "— sem preenchimento (pode estar de folga)"}
+        for l in _linhas_eq
+    ]), use_container_width=True, hide_index=True)
 
 st.divider()
 

@@ -62,5 +62,13 @@ models_mod.dados_usuarios = lambda ids: {"u1": {"nome": "Karoline Raizel", "turm
 models_mod.listar_pendentes_assinatura = lambda colaborador_id=None, dias=30: [CK]
 models_mod.concluir_checklist = lambda cid, uid, com, incompleto=False: ASSINADOS.append((cid, uid, incompleto))
 
+import src.equipes_ui as eq_ui
+from datetime import date as _d
+
+_MODO_EQUIPE = os.environ.get("TESTE_EQUIPE")          # "com" = u1 é da equipe; "sem" = só outra pessoa
+if _MODO_EQUIPE:
+    eq_ui._equipes_cache = lambda: [{"id": "e1", "nome": "Equipe Eduardo"}]
+    eq_ui._indice_cache = lambda eid: {("u1" if _MODO_EQUIPE == "com" else "zz"): [(_d(2026, 1, 1), None)]}
+
 exec(open(Path(__file__).resolve().parent.parent.parent / "pages" / "8_📜_Histórico.py", encoding="utf-8").read())
 

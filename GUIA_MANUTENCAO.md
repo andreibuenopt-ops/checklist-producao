@@ -435,3 +435,12 @@ Página 🧪 Ecoresinator → aba **📜 Histórico** (`src/ecoresinator_hist_ui
 - Abrir qualquer registro na tela (bicos, parâmetros, comentário, quem preencheu/assinou) — PDF só se pedir.
 - 📈 Evolução de um parâmetro (pressões/vazão) ao longo dos turnos.
 - Cache de 3 min; botão "🔄 Atualizar". A rotina já concluída (aba Preencher) também mostra tudo na tela.
+
+
+## Equipes (filtro por equipe do supervisor)
+- SQL: `sql/migration_equipes.sql` (tabelas `equipes` e `equipe_membros`, com data de entrada/saída). Rodar uma vez no Supabase SQL Editor.
+- Cadastro: Administração → 👥 Equipes (criar equipe, escolher líder, vincular usuários já cadastrados com data de entrada, encerrar/transferir por data).
+- Regra: um checklist é da equipe se o colaborador OU o supervisor que assinou era membro na data de produção do checklist. Transferência preserva o histórico na equipe antiga.
+- Onde filtra: Histórico (3 abas), Dashboard (cards, rondas, painel de quem preencheu) e Aderência → aba "👥 Por equipe".
+- "Dias sem preencher" inclui folgas/férias (não há escala no sistema).
+- Código: `src/equipes_logica.py` (puro, testável), `src/equipes.py` (banco), `src/equipes_ui.py` (seletor).

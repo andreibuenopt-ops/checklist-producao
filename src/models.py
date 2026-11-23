@@ -592,7 +592,7 @@ def respostas_nao_periodo(inicio: date, fim: date) -> list:
         supabase.table("checklist_respostas")
         .select(
             "id, checklist_template_itens(pergunta), "
-            "checklists!inner(template_id, data, status, checklist_templates(area, codigo))"
+            "checklists!inner(template_id, data, status, colaborador_id, supervisor_id, checklist_templates(area, codigo))"
         )
         .eq("resposta", "Não")
         .eq("checklists.status", "completo")
