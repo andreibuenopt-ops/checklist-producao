@@ -107,3 +107,17 @@ def ecoresinator_primeiro_dia() -> date | None:
     Ecoresinator no índice de aderência (ele não é um template)."""
     res = supabase.table("ecoresinator_checklists").select("data").order("data").limit(1).execute()
     return date.fromisoformat(str(res.data[0]["data"])[:10]) if res.data else None
+
+
+def ecoresinator_historico(inicio: date, fim: date) -> list:
+    """Registros completos (com leituras) do período, do mais recente ao mais antigo."""
+    res = (
+        supabase.table("ecoresinator_checklists")
+        .select("*")
+        .gte("data", inicio.isoformat())
+        .lte("data", fim.isoformat())
+        .order("data", desc=True)
+        .limit(1000)
+        .execute()
+    )
+    return res.data

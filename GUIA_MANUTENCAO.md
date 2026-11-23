@@ -428,3 +428,10 @@ Causa: o Streamlit perde o login (`st.session_state`) quando a página recarrega
 - **Login persistente** (`src/sessao.py`): token assinado (HMAC, 14 h) na URL `?s=...`; `exigir_login()` restaura o usuário ao recarregar. "Sair" remove o token. Segredo: `SESSION_SECRET` nos secrets (opcional; senão usa `SUPABASE_KEY`). Quem copiar a URL completa entra como aquele usuário até vencer.
 - **Rascunho no aparelho** (`src/rascunho.py`, ligado em `src/preenchimento_ui.py`): JS guarda no `localStorage` o que foi marcado/digitado e restaura ao reabrir — só o que ainda não está salvo no banco; apagado após "Atualizar respostas". Testado em navegador real (Playwright). Não funciona offline de verdade: **para gravar no banco ainda é preciso rede** (apertar "Atualizar respostas").
 - Não cobre ainda: página de Parada de Linha e fotos (fotos não entram no rascunho).
+
+## Histórico do Ecoresinator
+Página 🧪 Ecoresinator → aba **📜 Histórico** (`src/ecoresinator_hist_ui.py`, lógica pura em `src/ecoresinator_hist.py`):
+- Resumo do período (esperados / concluídos / em andamento / sem registro) e **grade dia × turno** (C, A, B): ✅ concluído (com hora real), 🟡 em andamento, ❌ sem registro, — turno que ainda não começou; ⚠️ N falha(s) quando algum bico tem falha de 3 vias/agulha/vazão.
+- Abrir qualquer registro na tela (bicos, parâmetros, comentário, quem preencheu/assinou) — PDF só se pedir.
+- 📈 Evolução de um parâmetro (pressões/vazão) ao longo dos turnos.
+- Cache de 3 min; botão "🔄 Atualizar". A rotina já concluída (aba Preencher) também mostra tudo na tela.

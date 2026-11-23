@@ -43,6 +43,46 @@ ROTULOS_GLOBAIS = {
 }
 
 
+def renderizar_ecoresinator_somente_leitura(checklist: dict, turno_nome: str, nomes: dict):
+    """Mostra na tela tudo que foi lido/registrado (bicos + parâmetros + comentário)."""
+    situacao = "✅ Concluída e assinada" if checklist["status"] == "completo" else "🟡 Em andamento (não assinada)"
+    st.markdown(
+        f"**{situacao}** · Turno {turno_nome} · {str(checklist['data'])[:10][8:]}/{str(checklist['data'])[5:7]}/{str(checklist['data'])[:4]}"
+        + (f" · Hora real **{checklist['horario_real']}**" if checklist.get("horario_real") else "")
+    )
+    col1, col2 = st.columns(2)
+    col1.metric("Colaborador", nomes.get(checklist.get("colaborador_id"), "-"))
+    col2.metric("Assinado por", nomes.get(checklist.get("supervisor_id"), "-"))
+
+    leituras = checklist.get("leituras_bicos") or []
+    if leituras:
+        st.markdown("**Leituras por bico**")
+        st.dataframe(pd.DataFrame(leituras).rename(columns=ROTULOS_BICO), hide_index=True, use_container_width=True)
+
+    st.markdown("**Parâmetros gerais**")
+    linhas = []
+    for campo, rotulo in ROTULOS_GLOBAIS.items():
+        valor = checklist.get(campo)
+        linhas.append({"Parâmetro": rotulo, "Valor": "—" if valor in (None, "") else str(valor)})
+    st.dataframe(pd.DataFrame(linhas), hide_index=True, use_container_width=True)
+    if checklist.get("comentario"):
+        st.markdown(f"**💬 Comentário:** {checklist['comentario']}")
+
+
+def botao_pdf_ecoresinator(checklist: dict, turno_nome: str, nomes: dict, chave: str):
+    dados_pdf = {
+        "checklist": checklist, "turno_nome": turno_nome,
+        "leituras_bicos": checklist.get("leituras_bicos", []),
+        "colaborador_nome": nomes.get(checklist.get("colaborador_id"), "-"),
+        "supervisor_nome": nomes.get(checklist.get("supervisor_id"), "-"),
+    }
+    st.download_button(
+        "⬇️ Exportar PDF desta rotina (opcional)",
+        data=lambda: gerar_pdf_ecoresinator(dados_pdf, obter_logo_bytes_com_fallback()), on_click="ignore",
+        file_name=f"ecoresinator_{checklist['id']}.pdf", mime="application/pdf", key=f"pdf_eco_{chave}",
+    )
+
+
 def renderizar_ecoresinator(usuario):
     st.title("🧪 Rotina de Inspeção — Ecoresinator")
     st.caption("Cozinha de cola · deve ser feita em todos os turnos, logo na primeira hora.")
@@ -57,26 +97,9 @@ def renderizar_ecoresinator(usuario):
     st.divider()
 
     if checklist["status"] == "completo":
-        st.success("Esta rotina já foi concluída e assinada. ✅")
         nomes = nomes_usuarios((checklist.get("colaborador_id"), checklist.get("supervisor_id")))
-        col1, col2 = st.columns(2)
-        col1.metric("Colaborador", nomes.get(checklist.get("colaborador_id"), "-"))
-        col2.metric("Assinado por", nomes.get(checklist.get("supervisor_id"), "-"))
-
-        st.dataframe(pd.DataFrame(checklist.get("leituras_bicos", [])).rename(columns=ROTULOS_BICO), hide_index=True)
-
-        dados_pdf = {
-            "checklist": checklist,
-            "turno_nome": turno.nome,
-            "leituras_bicos": checklist.get("leituras_bicos", []),
-            "colaborador_nome": nomes.get(checklist.get("colaborador_id"), "-"),
-            "supervisor_nome": nomes.get(checklist.get("supervisor_id"), "-"),
-        }
-        st.download_button(
-            "⬇️ Exportar PDF desta rotina (opcional)",
-            data=lambda: gerar_pdf_ecoresinator(dados_pdf, obter_logo_bytes_com_fallback()), on_click="ignore",
-            file_name=f"ecoresinator_{checklist['id']}.pdf", mime="application/pdf",
-        )
+        renderizar_ecoresinator_somente_leitura(checklist, turno.nome, nomes)
+        botao_pdf_ecoresinator(checklist, turno.nome, nomes, f"preench_{checklist['id']}")
         return
 
     horario_real = st.text_input(
