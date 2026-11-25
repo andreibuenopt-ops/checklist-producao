@@ -1,15 +1,21 @@
 """Ponte entre a página "Modo offline" e o armazenamento do celular.
 
 Um componente (Streamlit Components v2, roda direto na página, sem iframe) lê o
-IndexedDB do aparelho — o mesmo que static/offline.html grava — e:
+IndexedDB do aparelho — o mesmo que offline_pwa/offline.html grava — e:
   - guarda o PACOTE (checklists/rondas) quando o usuário toca em "Preparar";
   - registra o service worker (deixa a tela offline abrir sem internet);
   - envia, um por vez, as rondas e fotos preenchidas sem sinal. O Python grava
     no banco e devolve o resultado; só então o celular apaga/marca como enviado.
 """
-import streamlit as st
+from pathlib import Path
 
-BASE_STATIC = "/app/static"
+import streamlit as st
+import streamlit.components.v1 as components
+
+# A tela offline (HTML/JS/service worker) é servida como arquivos de um COMPONENTE do Streamlit:
+# funciona em qualquer versão/hospedagem, ao contrário de /app/static (que o Streamlit Cloud não serve).
+_PWA = components.declare_component("ck_offline", path=str(Path(__file__).resolve().parent.parent / "offline_pwa"))
+BASE_PWA = f"/component/{_PWA.name}"
 
 _JS = r"""
 export default function (component) {
@@ -53,7 +59,7 @@ def sincronizador(pacote=None, enviar=False, resultado=None):
     nada = lambda: None
     return _componente(
         key="ck_off_sync",
-        data={"base": BASE_STATIC, "pacote": pacote, "enviar": enviar, "resultado": resultado},
+        data={"base": BASE_PWA, "pacote": pacote, "enviar": enviar, "resultado": resultado},
         on_item_change=nada, on_fim_change=nada, on_resumo_change=nada,
         on_preparo_change=nada, on_erro_change=nada,
     )

@@ -1,10 +1,10 @@
 """Modo offline: preparar o celular (com internet) e enviar o que foi
-preenchido sem sinal. O preenchimento offline em si fica em static/offline.html."""
+preenchido sem sinal. O preenchimento offline em si fica em offline_pwa/offline.html."""
 import streamlit as st
 
 from src.auth import exigir_login
 from src.offline import gravar_foto, gravar_ronda, pacote_do_usuario
-from src.offline_ui import BASE_STATIC, sincronizador
+from src.offline_ui import BASE_PWA, sincronizador
 from src.sidebar import mostrar_usuario_logado
 from src.tema import aplicar_tema, desativar_traducao_automatica
 
@@ -66,7 +66,9 @@ if res.erro:
 outros = [u for u in (resumo.get("usuarios") or []) if u != usuario.id]
 if outros:
     st.warning("Há preenchimento neste aparelho feito por **outra pessoa**. Ele só é enviado quando ela entrar com o login dela.")
-if pendentes:
+if res.resumo is None and not res.erro:
+    st.info("⏳ Verificando o que está guardado neste aparelho…")
+elif pendentes:
     st.info(f"{resumo.get('rondas', 0)} checklist(s) e {resumo.get('fotos', 0)} foto(s) aguardando envio."
             + (" Enviando…" if ss["off_enviar"] else ""))
     if not ss["off_enviar"]:
@@ -99,6 +101,6 @@ preparo = ss.get("off_preparo")
 if preparo:
     st.success(f"✅ Aparelho preparado: {preparo['checklists']} checklist(s) guardados"
                + ("" if preparo.get("sw") else " — ⚠️ o navegador não liberou o uso sem internet; abra a tela offline uma vez agora, com sinal."))
-st.markdown(f"[📋 Abrir a tela offline]({BASE_STATIC}/offline.html)")
+st.markdown(f"[📋 Abrir a tela offline]({BASE_PWA}/offline.html)")
 st.caption("Dica: no celular, no menu do navegador, escolha **Adicionar à tela inicial** para abrir como um aplicativo. "
            "O pacote vale ~36 horas — prepare de novo a cada turno.")

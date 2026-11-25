@@ -1,6 +1,6 @@
 // Service worker do modo offline: guarda a tela offline para abrir sem internet.
-const CACHE = 'ckoff-v1';
-const ARQUIVOS = ['offline.html', 'offline-db.js', 'offline.webmanifest', 'offline-icon.png'];
+const CACHE = 'ckoff-v2';
+const ARQUIVOS = ['offline.html', 'offline-db.js', 'manifest.json', 'offline-icon.png'];
 
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(ARQUIVOS)).then(() => self.skipWaiting()));

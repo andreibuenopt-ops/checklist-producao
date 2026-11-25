@@ -30,8 +30,6 @@ def _porta():
 def servidor(tmp_path):
     from PIL import Image
     app = ROOT / "tests" / "e2e_apps"
-    shutil.rmtree(app / "static", ignore_errors=True)
-    shutil.copytree(ROOT / "static", app / "static")            # o Streamlit serve a pasta static ao lado do script
     segredos = ROOT / ".streamlit" / "secrets.toml"
     tinha = segredos.exists()
     if not tinha:
@@ -41,7 +39,8 @@ def servidor(tmp_path):
     porta = _porta()
     proc = subprocess.Popen(
         [sys.executable, "-m", "streamlit", "run", str(app / "offline_app.py"), "--server.port", str(porta),
-         "--server.headless", "true", "--server.enableStaticServing", "true", "--browser.gatherUsageStats", "false"],
+         "--server.headless", "true", "--server.enableStaticServing", "false",
+          "--browser.gatherUsageStats", "false"],
         cwd=ROOT, env={**os.environ, "E2E_LOG": str(log)}, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
     )
     url = f"http://127.0.0.1:{porta}"
@@ -55,7 +54,6 @@ def servidor(tmp_path):
     Image.new("RGB", (2400, 1800), (200, 30, 30)).save(foto, quality=95)
     yield {"url": url, "log": log, "foto": foto, "proc": proc}
     proc.terminate()
-    shutil.rmtree(app / "static", ignore_errors=True)
     if not tinha:
         segredos.unlink(missing_ok=True)
 
@@ -80,7 +78,7 @@ def test_preparar_preencher_sem_internet_e_enviar(servidor):
 
         # 2) sem internet: a tela offline abre pelo service worker
         ctx.set_offline(True)
-        pg.goto(url + "/app/static/offline.html")
+        pg.goto(url + "/component/src.offline_ui.ck_offline/offline.html")
         expect(pg.get_by_text("Sem internet")).to_be_visible(timeout=15000)
         pg.get_by_role("button", name="Área das Serras").click()
         expect(pg.get_by_text("Houve parada?")).to_be_visible()
@@ -111,7 +109,8 @@ def test_preparar_preencher_sem_internet_e_enviar(servidor):
         # 5) volta a internet: abre o app e o envio é automático
         ctx.set_offline(False)
         pg.goto(url + "/")
-        expect(pg.get_by_text("Nada aguardando envio")).to_be_visible(timeout=40000)
+        expect(pg.get_by_text("Nada aguardando envio")).to_be_visible(timeout=40000)     # só aparece DEPOIS de enviar tudo
+        assert "Verificando" not in pg.inner_text("body")
         assert not erros, erros
         nav.close()
 

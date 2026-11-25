@@ -2,7 +2,7 @@
 
 Fluxo: com internet, o app monta um PACOTE (checklists, perguntas, rondas e as
 janelas de turno das próximas ~36 h) e o celular guarda. Sem internet, a tela
-estática (static/offline.html) preenche usando só o pacote e grava no aparelho.
+estática (offline_pwa/offline.html) preenche usando só o pacote e grava no aparelho.
 Quando volta o sinal, cada ronda/foto é enviada e validada aqui.
 """
 import re
