@@ -1,0 +1,10 @@
+{
+  "name": "Checklist offline — Guararapes",
+  "short_name": "Checklist offline",
+  "start_url": "/app/static/offline.html",
+  "scope": "/app/static/",
+  "display": "standalone",
+  "background_color": "#f4f6ef",
+  "theme_color": "#667f38",
+  "icons": [{ "src": "offline-icon.png", "sizes": "192x192", "type": "image/png" }]
+}

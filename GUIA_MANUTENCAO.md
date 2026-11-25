@@ -444,3 +444,11 @@ Página 🧪 Ecoresinator → aba **📜 Histórico** (`src/ecoresinator_hist_ui
 - Onde filtra: Histórico (3 abas), Dashboard (cards, rondas, painel de quem preencheu) e Aderência → aba "👥 Por equipe".
 - "Dias sem preencher" inclui folgas/férias (não há escala no sistema).
 - Código: `src/equipes_logica.py` (puro, testável), `src/equipes.py` (banco), `src/equipes_ui.py` (seletor).
+
+## Modo offline (área externa sem internet)
+- **Fluxo:** com internet, `📴 Modo offline` → "Preparar este aparelho" (o celular guarda checklists externos, perguntas, rondas e os turnos das próximas ~36 h). Sem sinal, abrir `/app/static/offline.html` (service worker deixa abrir sem rede), preencher (Sim/Não/N-A, observação, texto livre, sub-perguntas, fotos, justificativa de atraso). Com sinal, abrir `📴 Modo offline`: o envio é automático (resposta por resposta, foto por foto) e o celular só apaga depois que o servidor confirma.
+- **Arquivos:** `static/offline.html` (tela), `static/offline-db.js` (IndexedDB compartilhado), `static/offline-sw.js` (cache), `static/offline.webmanifest` + `offline-icon.png` (instalar na tela inicial); `src/offline_logica.py` (puro: janelas de turno, pacote, validação), `src/offline.py` (banco: gravar ronda/foto), `src/offline_ui.py` (componente v2 que lê o IndexedDB), `pages/11_📴_Modo_offline.py`.
+- **Requer** `enableStaticServing = true` em `.streamlit/config.toml` (já está) e a pasta `static/` ao lado do `app.py`. Não colocar dados na pasta `static/` (é pública).
+- **Regras do servidor:** usa SEMPRE o usuário logado; recusa registro de outra pessoa no aparelho, checklist já assinado, turno/pergunta inválidos; resposta offline só grava se não houver uma mais nova no banco; foto repetida não duplica (id do celular no nome do arquivo); máx. 3 fotos por pergunta.
+- **Pacote:** vale ~36 h; preparar de novo a cada turno. Mudou pergunta/horário no Administração → o aparelho só vê depois de preparar de novo.
+- **Teste de navegador real:** `E2E=1 python -m pytest tests/test_offline_e2e.py` (sobe Streamlit com banco falso e Chromium: prepara, fica offline, preenche com foto, volta e confere o envio). Fica fora da suíte normal.

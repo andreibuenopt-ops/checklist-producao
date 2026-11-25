@@ -1,0 +1,284 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#667f38">
+<title>Checklist offline</title>
+<link rel="manifest" href="offline.webmanifest">
+<link rel="icon" href="offline-icon.png">
+<style>
+  :root { --verde:#667f38; --verde-esc:#4d6129; --fundo:#f4f6ef; --cinza:#6b7280; --borda:#d6dcc7; --vermelho:#c0392b; }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; background:var(--fundo); color:#1f2937; padding-bottom:110px; }
+  header { background:var(--verde); color:#fff; padding:12px 14px; position:sticky; top:0; z-index:5; }
+  header h1 { margin:0; font-size:18px; }
+  header .sub { font-size:12px; opacity:.9; margin-top:2px; }
+  .dot { display:inline-block; width:9px; height:9px; border-radius:50%; margin-right:5px; background:#9ca3af; }
+  .dot.on { background:#bbf7d0; } .dot.off { background:#fecaca; }
+  main { padding:12px; max-width:720px; margin:0 auto; }
+  h2 { font-size:15px; margin:18px 0 6px; color:var(--verde-esc); text-transform:uppercase; letter-spacing:.03em; }
+  .card { background:#fff; border:1px solid var(--borda); border-radius:12px; padding:12px; margin:8px 0; }
+  button.card { width:100%; text-align:left; font:inherit; color:inherit; cursor:pointer; min-height:56px; }
+  .titulo { font-weight:600; } .mini { font-size:12px; color:var(--cinza); margin-top:3px; }
+  .badge { display:inline-block; font-size:11px; padding:2px 7px; border-radius:99px; background:#e8efd8; color:var(--verde-esc); margin-left:6px; }
+  .badge.pend { background:#fef3c7; color:#92400e; } .badge.erro { background:#fee2e2; color:#991b1b; }
+  select, textarea, input[type=text] { width:100%; font:inherit; padding:10px; border:1px solid var(--borda); border-radius:8px; background:#fff; }
+  textarea { min-height:64px; resize:vertical; }
+  .resp { display:flex; gap:6px; margin:6px 0; }
+  .resp button { flex:1; min-height:48px; font:inherit; font-weight:600; border:2px solid var(--borda); background:#fff; border-radius:10px; cursor:pointer; }
+  .resp button.sel.sim { background:#dcfce7; border-color:#16a34a; color:#166534; }
+  .resp button.sel.nao { background:#fee2e2; border-color:var(--vermelho); color:#991b1b; }
+  .resp button.sel.na { background:#e5e7eb; border-color:#6b7280; color:#374151; }
+  .filhas { border-left:4px solid var(--verde); margin:6px 0 6px 6px; padding-left:8px; }
+  .fotos { display:flex; flex-wrap:wrap; gap:8px; margin:6px 0; align-items:center; }
+  .fotos .th { position:relative; } .fotos img { width:84px; height:84px; object-fit:cover; border-radius:8px; border:1px solid var(--borda); }
+  .fotos .th button { position:absolute; top:-6px; right:-6px; width:24px; height:24px; border-radius:50%; border:0; background:var(--vermelho); color:#fff; }
+  .btn { font:inherit; font-weight:600; border:0; border-radius:10px; padding:12px 14px; min-height:48px; cursor:pointer; background:var(--verde); color:#fff; }
+  .btn.sec { background:#fff; color:var(--verde-esc); border:2px solid var(--verde); }
+  .btn.peq { min-height:38px; padding:6px 10px; font-size:14px; }
+  .btn[disabled] { opacity:.5; }
+  .aviso { background:#fef9c3; border:1px solid #fde047; border-radius:10px; padding:10px; margin:8px 0; font-size:14px; }
+  .aviso.erro { background:#fee2e2; border-color:#fca5a5; } .aviso.ok { background:#dcfce7; border-color:#86efac; }
+  .ronda { margin-top:18px; padding:8px 0; border-top:3px solid var(--verde); }
+  .ronda h3 { margin:6px 0; }
+  footer { position:fixed; left:0; right:0; bottom:0; background:#fff; border-top:1px solid var(--borda); padding:10px 12px calc(10px + env(safe-area-inset-bottom)); display:flex; gap:10px; align-items:center; z-index:6; }
+  footer .txt { flex:1; font-size:13px; }
+  .salvo { font-size:12px; color:var(--cinza); text-align:right; }
+</style>
+</head>
+<body>
+<header>
+  <h1>📋 Checklist offline</h1>
+  <div class="sub"><span id="dot" class="dot"></span><span id="status">…</span> · <span id="quem"></span></div>
+</header>
+<main id="app"></main>
+<footer id="rodape"><div class="txt" id="rodape-txt"></div><button class="btn" id="rodape-btn" hidden></button></footer>
+
+<script type="module">
+import * as DB from './offline-db.js';
+
+const $app = document.getElementById('app');
+const MARGEM_MS = 60 * 60 * 1000, MAX_FOTOS = 3;
+const ICONE = { critica: '🔴', alta: '🟠', media: '⚪' };
+let pacote = null, janelaI = 0, ckAtual = null, rec = null, rondasMap = {}, fotosCache = [], urls = [], timerSalvar = null;
+
+const h = (tag, attrs = {}, ...filhos) => {
+  const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs || {})) {
+    if (k === 'class') e.className = v; else if (k.startsWith('on')) e.addEventListener(k.slice(2), v);
+    else if (v !== false && v != null) e.setAttribute(k, v === true ? '' : v);
+  }
+  for (const f of filhos.flat()) if (f != null && f !== false) e.append(f.nodeType ? f : document.createTextNode(f));
+  return e;
+};
+const fmtData = (iso) => iso.split('-').reverse().join('/');
+const hojeJanela = () => {
+  const agora = Date.now();
+  const i = pacote.janelas.findIndex(j => Date.parse(j.ini) <= agora && agora < Date.parse(j.fim));
+  return i >= 0 ? i : Math.max(0, pacote.janelas.findLastIndex(j => Date.parse(j.fim) <= agora));
+};
+const linkApp = () => pacote?.link || (location.origin + '/Modo_offline');
+
+// ---------------------------------------------------------------- status
+async function atualizarRodape() {
+  const online = navigator.onLine;
+  document.getElementById('dot').className = 'dot ' + (online ? 'on' : 'off');
+  document.getElementById('status').textContent = online ? 'Com internet' : 'Sem internet';
+  const r = await DB.resumo();
+  const txt = document.getElementById('rodape-txt'), btn = document.getElementById('rodape-btn');
+  const pend = r.rondas + r.fotos;
+  btn.hidden = !pend;
+  if (!pend) { txt.textContent = '✅ Nada aguardando envio.'; return; }
+  txt.innerHTML = `📤 <b>${r.rondas}</b> checklist(s) e <b>${r.fotos}</b> foto(s) aguardando envio` +
+    (r.erros ? ` · <span style="color:#991b1b">${r.erros} com problema</span>` : '');
+  btn.textContent = online ? '📤 Enviar agora' : 'Sem sinal';
+  btn.disabled = !online;
+  btn.onclick = () => { location.href = linkApp(); };
+}
+window.addEventListener('online', atualizarRodape);
+window.addEventListener('offline', atualizarRodape);
+
+// ---------------------------------------------------------------- lista
+async function telaLista() {
+  ckAtual = null; rec = null; urls.forEach(URL.revokeObjectURL); urls = [];
+  $app.replaceChildren();
+  if (!pacote) {
+    $app.append(h('div', { class: 'aviso' },
+      h('b', {}, 'Nenhum checklist baixado neste aparelho.'), h('br'),
+      'Com internet, abra o app, entre em ', h('b', {}, '📴 Modo offline'), ' e toque em ',
+      h('b', {}, 'Preparar este aparelho'), '. Depois disso esta tela abre mesmo sem sinal.'),
+      h('a', { class: 'btn', href: linkApp(), style: 'display:inline-block;text-decoration:none' }, 'Abrir o app'));
+    return;
+  }
+  const fim = Date.parse(pacote.janelas.at(-1).fim);
+  if (Date.now() > fim) $app.append(h('div', { class: 'aviso erro' },
+    '⚠️ Este pacote venceu. Quando tiver internet, abra ', h('b', {}, '📴 Modo offline'), ' e prepare de novo.'));
+
+  const sel = h('select', { onchange: (e) => { janelaI = +e.target.value; telaLista(); } },
+    pacote.janelas.map((j, i) => h('option', { value: i, selected: i === janelaI },
+      `Turno ${j.letra} ${j.nome} · ${fmtData(j.ref)}${i === hojeJanela() ? ' (agora)' : ''}`)));
+  $app.append(h('label', { class: 'mini' }, 'Turno / dia de produção'), sel);
+
+  rondasMap = Object.fromEntries((await DB.todasRondas()).map(r => [r.key, r]));
+  const j = pacote.janelas[janelaI];
+  const lista = pacote.checklists.filter(c => c.rondas[String(janelaI)]);
+  if (!lista.length) $app.append(h('div', { class: 'aviso' }, 'Nenhum checklist com ronda neste turno.'));
+  let setor = null;
+  for (const c of lista) {
+    if (c.setor !== setor) { setor = c.setor; $app.append(h('h2', {}, setor)); }
+    const r = rondasMap[DB.chaveRonda(c.id, j.turno_id, j.ref)];
+    const rondas = c.rondas[String(janelaI)];
+    const esperadas = rondas.length * c.itens.filter(i => !i.pai).length;
+    const feitas = r ? Object.keys(r.respostas || {}).length : 0;
+    $app.append(h('button', { class: 'card', onclick: () => abrirChecklist(c) },
+      h('div', { class: 'titulo' }, c.area || c.titulo,
+        r?.erro ? h('span', { class: 'badge erro' }, 'não enviado') :
+        r?.sujo ? h('span', { class: 'badge pend' }, 'a enviar') : r ? h('span', { class: 'badge' }, 'enviado ✓') : null),
+      h('div', { class: 'mini' }, `Rondas: ${rondas.map(x => x.h).join(' · ')} · ${feitas}/${esperadas}+ respondidas`),
+      r?.erro ? h('div', { class: 'mini', style: 'color:#991b1b' }, r.erro) : null));
+  }
+  await atualizarRodape();
+}
+
+// ---------------------------------------------------------------- formulário
+async function abrirChecklist(c) {
+  const j = pacote.janelas[janelaI], key = DB.chaveRonda(c.id, j.turno_id, j.ref);
+  ckAtual = c;
+  rec = (await DB.lerRonda(key)) || { key, template_id: c.id, turno_id: j.turno_id, data_ref: j.ref,
+    user_id: pacote.usuario.id, respostas: {}, justificativas: {}, fotos_env: {} };
+  fotosCache = await DB.fotosDaRonda(key);
+  desenhar();
+  window.scrollTo(0, 0);
+}
+
+function salvarDepois() {
+  document.getElementById('salvo').textContent = '💾 salvando…';
+  clearTimeout(timerSalvar);
+  timerSalvar = setTimeout(async () => {
+    rec = await DB.salvarRonda(rec);
+    document.getElementById('salvo').textContent = '💾 Salvo neste aparelho';
+    atualizarRodape();
+  }, 250);
+}
+
+function desenhar() {
+  const c = ckAtual, j = pacote.janelas[janelaI];
+  const rondas = c.rondas[String(janelaI)];
+  urls.forEach(URL.revokeObjectURL); urls = [];
+  const filhos = {};
+  c.itens.filter(i => i.pai).forEach(i => (filhos[i.pai] ||= []).push(i));
+  const topo = c.itens.filter(i => !i.pai);
+  const agora = Date.now();
+  const vigente = [...rondas].filter(r => Date.parse(r.p) <= agora).sort((a, b) => Date.parse(b.p) - Date.parse(a.p))[0];
+
+  const raiz = h('div');
+  raiz.append(
+    h('button', { class: 'btn sec peq', onclick: () => telaLista() }, '← Voltar'),
+    h('h2', {}, c.area || c.titulo),
+    h('div', { class: 'mini' }, `${c.codigo} · Turno ${j.letra} ${j.nome} · ${fmtData(j.ref)}`),
+    h('div', { class: 'salvo', id: 'salvo' }, rec.v ? '💾 Salvo neste aparelho' : ''));
+  if (rec.erro) raiz.append(h('div', { class: 'aviso erro' }, '⚠️ Não foi enviado: ' + rec.erro,
+    h('br'), h('button', { class: 'btn sec peq', onclick: async () => {
+      if (confirm('Descartar o que foi preenchido neste checklist?')) { await DB.descartarRonda(rec.key); telaLista(); } } }, 'Descartar')));
+
+  for (const r of rondas) {
+    const sec = h('section', { class: 'ronda' }, h('h3', {}, `🕒 Ronda das ${r.h}`));
+    for (const item of topo) {
+      sec.append(blocoItem(item, r));
+      const resp = rec.respostas[`${item.id}|${r.id}`]?.r;
+      if (filhos[item.id] && resp === 'Sim') {
+        const q = h('div', { class: 'filhas' }, h('div', { class: 'mini' }, '↳ Perguntas desta parada — a foto do local é obrigatória'));
+        filhos[item.id].forEach(f => q.append(blocoItem(f, r)));
+        sec.append(q);
+      } else if (filhos[item.id]) sec.append(h('div', { class: 'mini' }, 'Marque Sim para abrir as perguntas desta parada.'));
+    }
+    if (vigente && vigente.id === r.id && agora > Date.parse(r.p) + MARGEM_MS) {
+      sec.append(h('div', { class: 'aviso' }, `⏰ Essa ronda passou de 1h do horário programado (${r.h}).`,
+        h('textarea', { placeholder: 'Por que está preenchendo agora? (opcional)', oninput: (e) => { rec.justificativas[r.id] = e.target.value; salvarDepois(); } },
+          rec.justificativas[r.id] || '')));
+    }
+    raiz.append(sec);
+  }
+  $app.replaceChildren(raiz);
+}
+
+function blocoItem(item, ronda) {
+  const k = `${item.id}|${ronda.id}`;
+  const box = h('div', { class: 'card' }, h('div', { class: 'titulo' }, `${ICONE[item.crit] || '⚪'} ${item.pergunta}`));
+  if (item.tipo === 'texto_livre') {
+    box.append(h('textarea', { oninput: (e) => {
+      const t = e.target.value; if (t.trim()) rec.respostas[k] = { r: 'Texto', o: t, t: Date.now() }; else delete rec.respostas[k]; salvarDepois(); } },
+      rec.respostas[k]?.o || ''));
+  } else {
+    const atual = rec.respostas[k]?.r;
+    const op = (valor, rot, cls) => h('button', { class: `${atual === valor ? 'sel ' : ''}${cls}`, onclick: () => {
+      rec.respostas[k] = { r: valor, o: rec.respostas[k]?.o || '', t: Date.now() };
+      salvarDepois(); desenhar(); } }, rot);
+    box.append(h('div', { class: 'resp' }, op('Sim', '✅ Sim', 'sim'), op('Não', '❌ Não', 'nao'), op('N/A', '➖ N/A', 'na')));
+    if (atual === 'Não') box.append(h('textarea', { placeholder: 'O que foi visto / ação tomada (opcional)',
+      oninput: (e) => { rec.respostas[k].o = e.target.value; rec.respostas[k].t = Date.now(); salvarDepois(); } }, rec.respostas[k].o || ''));
+  }
+  box.append(blocoFotos(item, ronda));
+  return box;
+}
+
+function blocoFotos(item, ronda) {
+  const fs = fotosCache.filter(f => f.item_id === item.id && f.horario_id === ronda.id);
+  const enviadas = rec.fotos_env?.[`${item.id}|${ronda.id}`] || 0;
+  const total = fs.length + enviadas;
+  const wrap = h('div', {}, h('div', { class: 'mini' },
+    item.foto ? (total ? '📷 Foto do local ✅' : '📷 Foto do local — ⚠️ obrigatória') : '📷 Fotos (opcional)',
+    enviadas ? ` · ${enviadas} já enviada(s)` : ''));
+  const linha = h('div', { class: 'fotos' });
+  for (const f of fs) {
+    const u = URL.createObjectURL(f.blob); urls.push(u);
+    linha.append(h('div', { class: 'th' }, h('img', { src: u }),
+      h('button', { 'aria-label': 'Remover foto', onclick: async () => { await DB.delFoto(f.id); fotosCache = fotosCache.filter(x => x.id !== f.id); desenhar(); atualizarRodape(); } }, '×'),
+      f.erro ? h('div', { class: 'mini', style: 'color:#991b1b' }, f.erro) : null));
+  }
+  if (total < MAX_FOTOS) {
+    const input = h('input', { type: 'file', accept: 'image/*', hidden: true, onchange: async (e) => {
+      const arq = e.target.files[0]; if (!arq) return;
+      try {
+        const blob = await comprimir(arq);
+        const f = { id: crypto.randomUUID(), key: rec.key, item_id: item.id, horario_id: ronda.id, blob, t: Date.now() };
+        await DB.addFoto(f); fotosCache.push(f);
+        if (!rec.v) rec = await DB.salvarRonda(rec);
+        desenhar(); atualizarRodape();
+      } catch (err) { alert('Não consegui usar essa foto: ' + err.message); }
+    } });
+    linha.append(input, h('button', { class: 'btn sec peq', onclick: () => input.click() }, '📷 Tirar / escolher foto'));
+  } else linha.append(h('span', { class: 'mini' }, `Limite de ${MAX_FOTOS} fotos nesta pergunta.`));
+  wrap.append(linha);
+  return wrap;
+}
+
+// Reduz a foto (máx. 1024 px, ~150 KB) para caber no aparelho e subir rápido.
+async function comprimir(arquivo) {
+  const bmp = await createImageBitmap(arquivo, { imageOrientation: 'from-image' });
+  const esc = Math.min(1, 1024 / Math.max(bmp.width, bmp.height));
+  const cv = document.createElement('canvas');
+  cv.width = Math.round(bmp.width * esc); cv.height = Math.round(bmp.height * esc);
+  cv.getContext('2d').drawImage(bmp, 0, 0, cv.width, cv.height);
+  let blob = null;
+  for (const q of [0.7, 0.6, 0.5, 0.4]) {
+    blob = await new Promise(r => cv.toBlob(r, 'image/jpeg', q));
+    if (blob && blob.size <= 150_000) break;
+  }
+  if (!blob) throw new Error('imagem inválida');
+  return blob;
+}
+
+// ---------------------------------------------------------------- início
+(async () => {
+  try { pacote = await DB.lerPacote(); } catch (e) { pacote = null; }
+  document.getElementById('quem').textContent = pacote ? pacote.usuario.nome : 'sem pacote';
+  if (pacote) janelaI = hojeJanela();
+  DB.registrarSW(location.pathname.replace(/\/[^/]*$/, '')).catch(() => {});
+  DB.limparAntigos().catch(() => {});
+  await telaLista();
+})();
+</script>
+</body>
+</html>

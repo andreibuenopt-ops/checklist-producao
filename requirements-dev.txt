@@ -1,1 +1,2 @@
 pytest>=8.0,<9.0
+playwright>=1.40  # só para tests/test_offline_e2e.py (E2E=1)

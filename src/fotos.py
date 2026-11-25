@@ -96,9 +96,13 @@ def _subir(caminho: str, conteudo: bytes, registrar):
         raise
 
 
-def enviar_foto(checklist_id: str, item_id: str, horario_id: str, conteudo: bytes, usuario_id: str) -> dict:
-    """Foto de um item de checklist: comprime, sobe foto + miniatura e registra."""
-    caminho = f"{checklist_id}/{item_id}_{horario_id}_{uuid.uuid4().hex[:12]}.jpg"
+def enviar_foto(checklist_id: str, item_id: str, horario_id: str, conteudo: bytes, usuario_id: str,
+                id_cliente: str | None = None) -> dict:
+    """Foto de um item de checklist: comprime, sobe foto + miniatura e registra.
+    `id_cliente` (modo offline) entra no nome do arquivo: serve pra reconhecer
+    uma foto que já subiu e não duplicar quando o envio é repetido."""
+    sufixo = (id_cliente or uuid.uuid4().hex)[:12]
+    caminho = f"{checklist_id}/{item_id}_{horario_id}_{sufixo}.jpg"
     return _subir(caminho, conteudo, lambda: supabase.table("checklist_fotos").insert({
         "checklist_id": checklist_id, "item_id": item_id, "horario_id": horario_id,
         "caminho": caminho, "enviado_por": usuario_id,
