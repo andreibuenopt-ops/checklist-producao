@@ -4,7 +4,7 @@ import streamlit as st
 
 from src.auth import exigir_login
 from src.offline import gravar_foto, gravar_ronda, pacote_do_usuario
-from src.offline_ui import BASE_PWA, sincronizador
+from src.offline_ui import sincronizador
 from src.sidebar import mostrar_usuario_logado
 from src.tema import aplicar_tema, desativar_traducao_automatica
 
@@ -101,6 +101,11 @@ preparo = ss.get("off_preparo")
 if preparo:
     st.success(f"✅ Aparelho preparado: {preparo['checklists']} checklist(s) guardados"
                + ("" if preparo.get("sw") else " — ⚠️ o navegador não liberou o uso sem internet; abra a tela offline uma vez agora, com sinal."))
-st.markdown(f"[📋 Abrir a tela offline]({BASE_PWA}/offline.html)")
+base_real = (res.base or {}).get("base")
+if base_real:
+    st.markdown(f"[📋 Abrir a tela offline]({base_real}/offline.html)")
+elif res.base:
+    st.error("Os arquivos da tela offline não estão acessíveis neste servidor. Mande este texto ao suporte:")
+    st.code("\n".join(res.base.get("testes") or []))
 st.caption("Dica: no celular, no menu do navegador, escolha **Adicionar à tela inicial** para abrir como um aplicativo. "
            "O pacote vale ~36 horas — prepare de novo a cada turno.")

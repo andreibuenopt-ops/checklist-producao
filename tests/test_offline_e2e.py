@@ -123,3 +123,32 @@ def test_preparar_preencher_sem_internet_e_enviar(servidor):
     assert next(r for r in ups if r["item_id"] == "t1")["resposta"] == "Texto"
     fotos = [l for l in linhas if l["tipo"] == "foto"]
     assert len(fotos) == 1 and 1000 < fotos[0]["bytes"] < 200_000 and fotos[0]["item"] == "f1"
+
+
+def test_acha_o_caminho_certo_quando_o_endereco_puro_devolve_so_o_casco(servidor):
+    """Simula o Streamlit Cloud: /component/... devolve o casco HTML (círculo girando) e só
+    /~/+/component/... entrega os arquivos de verdade. O app tem que descobrir isso sozinho."""
+    from playwright.sync_api import expect, sync_playwright
+
+    url = servidor["url"]
+    with sync_playwright() as p:
+        nav = p.chromium.launch()
+        ctx = nav.new_context(service_workers="block")
+
+        def nuvem(route):
+            u = route.request.url
+            if "/~/+/component/" in u:
+                r = route.fetch(url=u.replace("/~/+/component/", "/component/"))
+                route.fulfill(response=r)
+            else:
+                route.fulfill(status=200, content_type="text/html", body="<html><body>casco do streamlit</body></html>")
+
+        ctx.route("**/component/**", nuvem)
+        pg = ctx.new_page()
+        pg.goto(url + "/")
+        expect(pg.get_by_role("link", name="📋 Abrir a tela offline")).to_be_visible(timeout=30000)
+        assert pg.get_by_role("link", name="📋 Abrir a tela offline").get_attribute("href") \
+            == "/~/+/component/src.offline_ui.ck_offline/offline.html"
+        pg.get_by_role("button", name="📥 Preparar este aparelho").click()
+        expect(pg.get_by_text("Aparelho preparado: 1 checklist(s)")).to_be_visible(timeout=30000)
+        nav.close()

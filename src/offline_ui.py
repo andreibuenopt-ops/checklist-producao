@@ -22,14 +22,32 @@ export default function (component) {
   const { data, setTriggerValue, setStateValue } = component;
   const G = (window.__ckoff = window.__ckoff || { tentados: new Set(), n: 0, aguardando: null, resumo: '', pacote: null, res: null });
   (async () => {
+    // No Streamlit Cloud o app real fica sob /~/+/ (o endereço "puro" devolve só o casco com o círculo girando).
+    // Testa os caminhos possíveis e usa o primeiro que devolve JavaScript de verdade.
+    if (!G.base && !G.testado) {
+      G.testado = true;
+      const pre = location.pathname.startsWith('/~/+') ? '/~/+' : '';
+      const cands = [...new Set([pre + data.base, data.base, '/~/+' + data.base])];
+      const testes = [];
+      for (const c of cands) {
+        try {
+          const r = await fetch(c + '/offline-db.js', { cache: 'no-store' });
+          const ct = r.headers.get('content-type') || '';
+          testes.push(`${c} → ${r.status} ${ct.split(';')[0]}`);
+          if (r.ok && /javascript/.test(ct)) { G.base = c; break; }
+        } catch (e) { testes.push(`${c} → erro ${e}`); }
+      }
+      setStateValue('base', { base: G.base || null, testes });
+    }
+    if (!G.base) return;
     let DB;
-    try { DB = await import(location.origin + data.base + '/offline-db.js'); }
+    try { DB = await import(location.origin + G.base + '/offline-db.js'); }
     catch (e) { setStateValue('erro', 'Não consegui abrir o armazenamento do aparelho: ' + e); return; }
 
     if (data.pacote && G.pacote !== data.pacote.gerado) {
       G.pacote = data.pacote.gerado;
       await DB.guardarPacote({ ...data.pacote, link: location.href });
-      let sw = false; try { sw = await DB.registrarSW(data.base); } catch (e) {}
+      let sw = false; try { sw = await DB.registrarSW(G.base); } catch (e) {}
       setStateValue('preparo', { sw, id: data.pacote.gerado, checklists: data.pacote.checklists.length });
     }
     if (data.resultado && G.res !== data.resultado.n) {
@@ -55,11 +73,11 @@ _componente = st.components.v2.component("ck_offline_sync", js=_JS)
 
 def sincronizador(pacote=None, enviar=False, resultado=None):
     """Monta o componente. Devolve o resultado do Streamlit (.item, .fim,
-    .resumo, .preparo, .erro)."""
+    .resumo, .preparo, .erro, .base)."""
     nada = lambda: None
     return _componente(
         key="ck_off_sync",
         data={"base": BASE_PWA, "pacote": pacote, "enviar": enviar, "resultado": resultado},
         on_item_change=nada, on_fim_change=nada, on_resumo_change=nada,
-        on_preparo_change=nada, on_erro_change=nada,
+        on_preparo_change=nada, on_erro_change=nada, on_base_change=nada,
     )
