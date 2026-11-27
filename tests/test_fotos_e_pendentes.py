@@ -37,6 +37,7 @@ class _Query:
 
     def eq(self, col, val): self._filtros.append(("eq", col, val)); return self
     def in_(self, col, vals): self._filtros.append(("in", col, list(vals))); return self
+    def neq(self, col, val): self._filtros.append(("neq", col, val)); return self
     def gte(self, col, val): self._filtros.append(("gte", col, val)); return self
     def lte(self, col, val): self._filtros.append(("lte", col, val)); return self
     def order(self, *_a, **_k): return self
@@ -49,6 +50,7 @@ class _Query:
                 v = l.get(col)
                 if op == "eq" and v != val: return False
                 if op == "in" and v not in val: return False
+                if op == "neq" and v == val: return False
                 if op == "gte" and not str(v) >= str(val): return False
                 if op == "lte" and not str(v) <= str(val): return False
             return True

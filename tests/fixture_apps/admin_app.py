@@ -39,7 +39,7 @@ models_mod.listar_usuarios = lambda: []
 models_mod.listar_equipamentos = lambda *a, **k: []
 models_mod.obter_logo_url_com_fallback = lambda: None
 models_mod.listar_templates = lambda apenas_ativos=True: [TEMPLATE]
-models_mod.listar_itens = lambda tid: [PAI, FILHA]
+models_mod.listar_itens = lambda tid, incluir_inativos=False: [PAI, FILHA]
 models_mod.listar_horarios_todos_turnos = lambda tid: []
 models_mod.listar_turnos = lambda: [{"id": 1, "nome": "Manhã"}, {"id": 2, "nome": "Tarde"}, {"id": 3, "nome": "Noite"}]
 models_mod.listar_setores = lambda: [{"id": 10, "nome": "Supervisão de Turno", "ordem": 10}]

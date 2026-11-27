@@ -34,7 +34,7 @@ def _anota(**k):
 
 
 off.listar_templates = lambda *a, **k: TPL
-off.listar_itens = lambda tid: ITENS
+off.listar_itens = lambda tid, incluir_inativos=False: ITENS
 off.listar_horarios = lambda tid, turno: HOR[turno]
 off.obter_ou_criar_checklist = lambda t, turno, d: {"id": f"ck-{t}-{turno}-{d}", "status": "em_andamento"}
 off.definir_colaborador = lambda *a: None

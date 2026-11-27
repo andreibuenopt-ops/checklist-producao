@@ -6,6 +6,8 @@ import unicodedata
 from datetime import date, timedelta
 from pathlib import Path
 
+from postgrest.exceptions import APIError
+
 from src.db import supabase
 from src.fotos import agrupar_por_item, carregar_bytes, listar_fotos, remover_fotos
 from src.itens import contar_esperadas, faltando_fotos, faltando_respostas, listar_faltando
@@ -176,22 +178,41 @@ def atualizar_nome_exibicao(template_id: str, area: str):
 # =====================================================================
 # Itens de inspeção
 # =====================================================================
-def listar_itens(template_id: str):
-    return (
-        supabase.table("checklist_template_itens")
-        .select("*")
-        .eq("template_id", template_id)
-        .order("ordem")
-        .execute()
-        .data
-    )
+class ItemSemMigracao(Exception):
+    """A coluna `ativo` de checklist_template_itens ainda não existe (rodar sql/migration_item_ativo.sql)."""
+
+
+_ITEM_TEM_ATIVO = False
+
+
+def _item_tem_ativo() -> bool:
+    """Existe a coluna `ativo` em checklist_template_itens? (só guarda o 'sim': antes da migração
+    o app continua funcionando como antes)."""
+    global _ITEM_TEM_ATIVO
+    if _ITEM_TEM_ATIVO:
+        return True
+    try:
+        supabase.table("checklist_template_itens").select("ativo").limit(1).execute()
+    except APIError:
+        return False
+    _ITEM_TEM_ATIVO = True
+    return True
+
+
+def listar_itens(template_id: str, incluir_inativos: bool = False):
+    """Perguntas do checklist. Por padrão só as ativas (o que se preenche hoje). Para MOSTRAR histórico
+    e para calcular a próxima ordem, use incluir_inativos=True."""
+    q = supabase.table("checklist_template_itens").select("*").eq("template_id", template_id)
+    if not incluir_inativos and _item_tem_ativo():
+        q = q.neq("ativo", False)
+    return q.order("ordem").execute().data
 
 
 def adicionar_itens(template_id: str, perguntas: list[str], criticidade: str = "media", tipo_resposta: str = "sim_nao",
                     pai_item_id: str | None = None, exige_foto: bool = False):
     """`pai_item_id` cria SUB-perguntas (aparecem só quando o pai é
     respondido "Sim"); `exige_foto` = não conclui sem foto da resposta."""
-    itens_atuais = listar_itens(template_id)
+    itens_atuais = listar_itens(template_id, incluir_inativos=True)
     proxima_ordem = max((i["ordem"] for i in itens_atuais), default=0)
     payload = [
         {
@@ -205,8 +226,36 @@ def adicionar_itens(template_id: str, perguntas: list[str], criticidade: str = "
         supabase.table("checklist_template_itens").insert(payload).execute()
 
 
-def remover_item(item_id: str):
-    supabase.table("checklist_template_itens").delete().eq("id", item_id).execute()
+def _contar_por_item(tabela: str, item_ids: list) -> int:
+    res = supabase.table(tabela).select("id", count="exact").in_("item_id", item_ids).limit(1).execute()
+    return res.count or 0
+
+
+def _ids_com_filhas(item_id: str) -> list:
+    filhas = supabase.table("checklist_template_itens").select("id").eq("pai_item_id", item_id).execute().data
+    return [item_id] + [f["id"] for f in filhas]
+
+
+def remover_item(item_id: str) -> str:
+    """Tira a pergunta do checklist SEM perder histórico e sem travar:
+    - já tem respostas/fotos gravadas -> DESATIVA (some do checklist novo; o histórico continua
+      mostrando; dá para restaurar). Devolve "desativado".
+    - nunca foi respondida -> apaga de vez. Devolve "excluido".
+    As sub-perguntas vão junto."""
+    ids = _ids_com_filhas(item_id)
+    if _contar_por_item("checklist_respostas", ids) or _contar_por_item("checklist_fotos", ids):
+        if not _item_tem_ativo():
+            raise ItemSemMigracao("Rode sql/migration_item_ativo.sql no Supabase para poder remover perguntas com histórico.")
+        supabase.table("checklist_template_itens").update({"ativo": False}).in_("id", ids).execute()
+        return "desativado"
+    supabase.table("checklist_sugestoes").update({"item_id": None}).in_("item_id", ids).execute()
+    supabase.table("checklist_template_itens").delete().in_("id", ids).execute()
+    return "excluido"
+
+
+def restaurar_item(item_id: str):
+    """Desfaz a remoção de uma pergunta desativada (e das sub-perguntas dela)."""
+    supabase.table("checklist_template_itens").update({"ativo": True}).in_("id", _ids_com_filhas(item_id)).execute()
 
 
 def editar_item(item_id: str, pergunta: str, criticidade: str, tipo_resposta: str = "sim_nao", exige_foto: bool = False):
@@ -499,12 +548,14 @@ def listar_checklists_periodo(inicio: date, fim: date, template_id: str | None =
     return _todas_as_linhas(montar)
 
 
-def listar_pendentes_assinatura(colaborador_id: str | None = None, dias: int = 30) -> list:
+def listar_pendentes_assinatura(colaborador_id: str | None = None, dias: int = 30, incluir_vazios: bool = False) -> list:
     """Checklists de turnos que JÁ ACABARAM, com respostas, mas sem
     assinatura (status em_andamento). Cada item vem com 'respondidas',
     'esperadas' e 'faltando' pra mostrar se vai ficar incompleto.
     Checklist aberto mas sem nenhuma resposta fica de fora — assinar em
-    branco contaria como realizado sem ter sido feito."""
+    branco contaria como realizado sem ter sido feito. Com `incluir_vazios`
+    esses abertos-sem-resposta também voltam (marcados vazio=True) só para
+    a tela EXPLICAR por que não dá para assinar."""
     atual = turno_e_data_referencia()
     inicio = atual.data_referencia - timedelta(days=dias)
 
@@ -550,15 +601,23 @@ def listar_pendentes_assinatura(colaborador_id: str | None = None, dias: int = 3
         )):
             fotos_por_ck.setdefault(f["checklist_id"], []).append(f)
 
+    if incluir_vazios:
+        saida += [
+            {**c, "respondidas": 0, "esperadas": None, "faltando_foto": 0, "lista_faltando": [], "faltando": 0, "vazio": True}
+            for c in passados if not respostas_por_ck.get(c["id"])
+        ]
     com_resposta = [c for c in passados if respostas_por_ck.get(c["id"])]
     template_ids = list({c["template_id"] for c in com_resposta})
     itens_por_template: dict = {}
     horarios_por_chave: dict = {}
     if template_ids:
-        for it in _todas_as_linhas(lambda: (
-            supabase.table("checklist_template_itens").select("*")
-            .in_("template_id", template_ids).order("ordem").order("id")
-        )):
+        def _q_itens():
+            q = supabase.table("checklist_template_itens").select("*").in_("template_id", template_ids)
+            if _item_tem_ativo():
+                q = q.neq("ativo", False)       # pergunta removida não conta como "faltando"
+            return q.order("ordem").order("id")
+
+        for it in _todas_as_linhas(_q_itens):
             itens_por_template.setdefault(it["template_id"], []).append(it)
         for h in _todas_as_linhas(lambda: (
             supabase.table("checklist_template_horarios").select("*")
@@ -668,7 +727,7 @@ def obter_checklist_completo(checklist_id: str, com_bytes: bool = True) -> dict 
     res_turno = supabase.table("turnos").select("nome").eq("id", checklist["turno_id"]).limit(1).execute()
     turno_nome = res_turno.data[0]["nome"] if res_turno.data else "-"
 
-    itens = listar_itens(checklist["template_id"])
+    itens = listar_itens(checklist["template_id"], incluir_inativos=True)      # histórico mostra também as removidas
     horarios = listar_horarios(checklist["template_id"], checklist["turno_id"])
     respostas = listar_respostas(checklist_id)
     justificativas_atraso = listar_justificativas_atraso(checklist_id)
@@ -775,7 +834,7 @@ def listar_sugestoes(status: str | None = None):
 
 
 def aprovar_sugestao(sugestao_id: str, template_id: str, master_id: str, pergunta: str, criticidade: str):
-    itens_atuais = listar_itens(template_id)
+    itens_atuais = listar_itens(template_id, incluir_inativos=True)
     proxima_ordem = max((i["ordem"] for i in itens_atuais), default=0) + 1
     novo_item = supabase.table("checklist_template_itens").insert({
         "template_id": template_id,

@@ -1,7 +1,7 @@
 """Modo offline — lógica PURA (sem Streamlit/banco), para poder testar à parte.
 
 Fluxo: com internet, o app monta um PACOTE (checklists, perguntas, rondas e as
-janelas de turno das próximas ~36 h) e o celular guarda. Sem internet, a tela
+janelas de turno dos próximos 14 dias — preparar uma vez cobre todos os turnos, sem refazer a cada turno) e o celular guarda. Sem internet, a tela
 estática (offline_pwa/offline.html) preenche usando só o pacote e grava no aparelho.
 Quando volta o sinal, cada ronda/foto é enviada e validada aqui.
 """
@@ -21,7 +21,7 @@ _ID_CLIENTE = re.compile(r"^[a-f0-9-]{8,40}$")
 # ---------------------------------------------------------------------
 # Janelas de turno (A 05:20–13:40 · B 13:40–22:00 · C 22:00–05:20)
 # ---------------------------------------------------------------------
-def janelas(agora: datetime, antes_h: int = 14, depois_h: int = 36) -> list[dict]:
+def janelas(agora: datetime, antes_h: int = 14, depois_h: int = 24 * 14) -> list[dict]:
     """Janelas de turno que tocam [agora-antes_h, agora+depois_h], em ordem."""
     base = agora.date() - timedelta(days=2)
 
@@ -30,7 +30,7 @@ def janelas(agora: datetime, antes_h: int = 14, depois_h: int = 36) -> list[dict
         return x.replace(tzinfo=agora.tzinfo or _TZ)
 
     todas = []
-    for k in range(6):
+    for k in range(3 + (antes_h + depois_h) // 24 + 1):
         d = base + timedelta(days=k)
         todas += [
             (1, d, dt(d, 5, 20), dt(d, 13, 40)),

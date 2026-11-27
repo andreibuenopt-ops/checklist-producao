@@ -452,3 +452,14 @@ Página 🧪 Ecoresinator → aba **📜 Histórico** (`src/ecoresinator_hist_ui
 - **Regras do servidor:** usa SEMPRE o usuário logado; recusa registro de outra pessoa no aparelho, checklist já assinado, turno/pergunta inválidos; resposta offline só grava se não houver uma mais nova no banco; foto repetida não duplica (id do celular no nome do arquivo); máx. 3 fotos por pergunta.
 - **Pacote:** vale ~36 h; preparar de novo a cada turno. Mudou pergunta/horário no Administração → o aparelho só vê depois de preparar de novo.
 - **Teste de navegador real:** `E2E=1 python -m pytest tests/test_offline_e2e.py` (sobe Streamlit com banco falso e Chromium: prepara, fica offline, preenche com foto, volta e confere o envio). Fica fora da suíte normal.
+
+## Remover pergunta (Administração)
+- Um clique. Se a pergunta já tem respostas/fotos, ela é **desativada** (`ativo=false`): some das listas e dos novos checklists, mas o histórico continua intacto. Sem histórico, é apagada de vez.
+- Perguntas desativadas ficam em "🗃️ Perguntas removidas" com botão **Restaurar**.
+- Requer rodar `sql/migration_item_ativo.sql` uma vez. Sem isso, remover pergunta COM histórico avisa em vez de apagar.
+
+## Pendentes de assinatura por equipe
+- Checklists abertos sem nenhuma resposta não entram na lista (assinar em branco = "feito sem ter sido"); aparecem num aviso "ℹ️ N abertos SEM nenhuma resposta".
+
+## Offline: sem preparar a cada turno
+- O pacote cobre 14 dias (todos os turnos). Preparar de novo só se mudarem checklists/perguntas ou perto do vencimento (aviso na tela offline com <2 dias).

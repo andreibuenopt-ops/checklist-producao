@@ -59,7 +59,7 @@ models_mod.listar_templates = lambda apenas_ativos=True: [
 models_mod.listar_checklists_periodo = lambda ini, fim, template_id=None, status=None: [CK_OK, CK]
 models_mod.obter_checklist_completo = _completo
 models_mod.dados_usuarios = lambda ids: {"u1": {"nome": "Karoline Raizel", "turma": "A"}}
-models_mod.listar_pendentes_assinatura = lambda colaborador_id=None, dias=30: [CK]
+models_mod.listar_pendentes_assinatura = lambda colaborador_id=None, dias=30, incluir_vazios=False: [CK]
 models_mod.concluir_checklist = lambda cid, uid, com, incompleto=False: ASSINADOS.append((cid, uid, incompleto))
 
 import src.equipes_ui as eq_ui

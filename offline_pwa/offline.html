@@ -112,6 +112,8 @@ async function telaLista() {
     return;
   }
   const fim = Date.parse(pacote.janelas.at(-1).fim);
+  if (Date.now() <= fim && fim - Date.now() < 2 * 86400000) $app.append(h('div', { class: 'aviso' },
+    'ℹ️ O pacote vence em menos de 2 dias. Na próxima vez com internet, prepare de novo no app.'));
   if (Date.now() > fim) $app.append(h('div', { class: 'aviso erro' },
     '⚠️ Este pacote venceu. Quando tiver internet, abra ', h('b', {}, '📴 Modo offline'), ' e prepare de novo.'));
 

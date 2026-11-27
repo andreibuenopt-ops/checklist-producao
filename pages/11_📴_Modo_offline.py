@@ -87,7 +87,7 @@ st.divider()
 # ---------------------------------------------------------------- 2) preparar
 st.subheader("📥 Preparar este aparelho (precisa de internet)")
 st.markdown(
-    "1. Toque em **Preparar** — o celular guarda os checklists dos próximos turnos.\n"
+    "1. Toque em **Preparar** — o celular guarda os checklists dos **próximos 14 dias** (todos os turnos).\n"
     "2. Abra a **tela offline** e use normalmente, **sem sinal**.\n"
     "3. Quando voltar o sinal, abra esta página: o envio é automático."
 )
@@ -108,4 +108,4 @@ elif res.base:
     st.error("Os arquivos da tela offline não estão acessíveis neste servidor. Mande este texto ao suporte:")
     st.code("\n".join(res.base.get("testes") or []))
 st.caption("Dica: no celular, no menu do navegador, escolha **Adicionar à tela inicial** para abrir como um aplicativo. "
-           "O pacote vale ~36 horas — prepare de novo a cada turno.")
+           "Não precisa preparar a cada turno: o pacote cobre 14 dias. Prepare de novo só se mudarem checklists/perguntas ou perto do vencimento.")

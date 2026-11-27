@@ -37,7 +37,9 @@ from src.models import (
     editar_setor_nome,
     listar_equipamentos,
     listar_horarios_todos_turnos,
+    ItemSemMigracao,
     listar_itens,
+    restaurar_item,
     listar_setores,
     listar_templates,
     listar_turnos,
@@ -599,8 +601,13 @@ with tab_checklists:
                 "**➕ Sub** cadastra sub-perguntas: elas só aparecem quando a pergunta for respondida "
                 "**Sim** (ex.: \"Houve parada programada?\" → perguntas da parada, com foto obrigatória)."
             )
-            itens = listar_itens(t["id"])
+            todos_itens = listar_itens(t["id"], incluir_inativos=True)
+            itens = [i for i in todos_itens if i.get("ativo", True)]
+            removidos = [i for i in todos_itens if not i.get("ativo", True)]
             topo, filhos_por_pai = separar_itens(itens)
+            _aviso_item = st.session_state.pop(f"aviso_item_{t['id']}", None)
+            if _aviso_item:
+                st.success(_aviso_item)
 
             def _linha_item(item, filho=False):
                 chave_edit_i = f"editando_item_{item['id']}"
@@ -616,7 +623,15 @@ with tab_checklists:
                         st.session_state[chave_edit_i] = True
                         st.rerun()
                     if c3.button("Remover", key=f"rm_{item['id']}"):
-                        remover_item(item["id"])
+                        try:
+                            resultado = remover_item(item["id"])
+                        except ItemSemMigracao as e:
+                            st.error(str(e))
+                            st.stop()
+                        st.session_state[f"aviso_item_{t['id']}"] = (
+                            "Pergunta removida. O histórico dela foi preservado (dá para restaurar abaixo)."
+                            if resultado == "desativado" else "Pergunta removida."
+                        )
                         st.rerun()
                     if not filho and item.get("tipo_resposta", "sim_nao") == "sim_nao":
                         if c4.button("➕ Sub", key=f"sub_{item['id']}"):
@@ -680,6 +695,16 @@ with tab_checklists:
                     if fechar_sub:
                         st.session_state[f"add_sub_{item['id']}"] = False
                         st.rerun()
+
+            if removidos:
+                with st.expander(f"🗃️ Perguntas removidas ({len(removidos)}) — histórico preservado"):
+                    for r_item in removidos:
+                        ra, rb = st.columns([6, 1])
+                        ra.write(f"{'↳ ' if r_item.get('pai_item_id') else ''}{r_item['pergunta']}")
+                        if rb.button("Restaurar", key=f"rest_{r_item['id']}"):
+                            restaurar_item(r_item["id"])
+                            st.session_state[f"aviso_item_{t['id']}"] = "Pergunta restaurada."
+                            st.rerun()
 
             with st.form(f"form_add_itens_{t['id']}", clear_on_submit=True):
                 st.markdown("**➕ Adicionar perguntas a este checklist**")

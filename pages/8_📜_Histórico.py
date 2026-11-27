@@ -41,7 +41,7 @@ TTL = 180
 
 @st.cache_data(ttl=TTL, show_spinner="Carregando…")
 def _pendentes_cache(colaborador_id):
-    return listar_pendentes_assinatura(colaborador_id=colaborador_id)
+    return listar_pendentes_assinatura(colaborador_id=colaborador_id, incluir_vazios=True)
 
 
 @st.cache_data(ttl=TTL, show_spinner=False)
@@ -141,6 +141,17 @@ with aba_pend:
         st.caption("Mostrando os checklists que você preencheu.")
     if indice_equipe is not None:
         pendentes = filtrar_checklists(pendentes, indice_equipe)
+    vazios = [c for c in pendentes if c.get("vazio")]
+    pendentes = [c for c in pendentes if not c.get("vazio")]
+    if vazios:
+        with st.expander(f"ℹ️ {len(vazios)} checklist(s) abertos SEM nenhuma resposta (não entram aqui)"):
+            st.caption(
+                "Foram abertos mas ninguém respondeu nada, então não há o que assinar (assinar em branco "
+                "contaria como feito sem ter sido). Eles aparecem na aba Histórico como \"sem assinatura\"."
+            )
+            _pessoas_v = dados_usuarios({c.get("colaborador_id") for c in vazios})
+            for c in vazios:
+                st.write(f"• {_rotulo(c, _pessoas_v)}")
 
     if not pendentes:
         st.success("Nenhum checklist pendente de assinatura. ✅")

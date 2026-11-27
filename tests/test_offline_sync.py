@@ -26,7 +26,7 @@ def off(monkeypatch):
 
     monkeypatch.setattr(off, "supabase", SimpleNamespace(table=Q))
     monkeypatch.setattr(off, "listar_templates", lambda *a, **k: [{"id": "t1"}])
-    monkeypatch.setattr(off, "listar_itens", lambda t: ITENS)
+    monkeypatch.setattr(off, "listar_itens", lambda t, incluir_inativos=False: ITENS)
     monkeypatch.setattr(off, "listar_horarios", lambda t, turno: [{"id": "h1"}])
     monkeypatch.setattr(off, "obter_ou_criar_checklist", lambda t, turno, d: {"id": "ck", "status": estado.status})
     monkeypatch.setattr(off, "definir_colaborador", lambda ck, u: estado.colaborador.append((ck, u)))

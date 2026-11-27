@@ -66,7 +66,7 @@ def gravar_ronda(item: dict, usuario) -> dict:
     if erro:
         return {"estado": "bloqueado", "msg": erro}
 
-    itens = listar_itens(template_id)
+    itens = listar_itens(template_id, incluir_inativos=True)    # pergunta removida depois do pacote não perde a resposta
     horarios_ids = {h["id"] for h in listar_horarios(template_id, turno_id)}
     respostas, justificativas, avisos = validar_registro(item, itens, horarios_ids, agora_local())
 
@@ -106,7 +106,7 @@ def gravar_foto(item: dict, usuario) -> dict:
     if erro:
         return {"estado": "bloqueado", "msg": erro}
     item_id, horario_id = str(item.get("item_id")), str(item.get("horario_id"))
-    if item_id not in {i["id"] for i in listar_itens(template_id)} \
+    if item_id not in {i["id"] for i in listar_itens(template_id, incluir_inativos=True)} \
             or horario_id not in {h["id"] for h in listar_horarios(template_id, turno_id)}:
         return {"estado": "bloqueado", "msg": "Foto de uma pergunta que não existe mais."}
 

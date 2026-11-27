@@ -1024,3 +1024,9 @@ drop policy if exists "app_full_access" on equipes;
 create policy "app_full_access" on equipes for all using (true) with check (true);
 drop policy if exists "app_full_access" on equipe_membros;
 create policy "app_full_access" on equipe_membros for all using (true) with check (true);
+
+-- ---------------------------------------------------------------------
+-- Perguntas desativadas (migration_item_ativo.sql)
+-- ---------------------------------------------------------------------
+alter table checklist_template_itens add column if not exists ativo boolean not null default true;
+create index if not exists idx_itens_ativo on checklist_template_itens (template_id, ativo);
