@@ -463,3 +463,12 @@ Página 🧪 Ecoresinator → aba **📜 Histórico** (`src/ecoresinator_hist_ui
 
 ## Offline: sem preparar a cada turno
 - O pacote cobre 14 dias (todos os turnos). Preparar de novo só se mudarem checklists/perguntas ou perto do vencimento (aviso na tela offline com <2 dias).
+
+## Ecoresinator só com foto
+- A rotina agora é: fotografar o painel (até 8 fotos) + hora real + comentário. Digitar leituras virou opcional (expander).
+- Concluir exige **1 foto OU leituras digitadas e salvas** (não trava quem prefere digitar).
+- Requer `sql/migration_ecoresinator_fotos.sql` (tabela `ecoresinator_fotos`). Fotos aparecem no histórico/leitura; o PDF ainda não inclui as fotos.
+- Fotos antigas entram na limpeza de Administração → Armazenamento.
+
+## Offline: preparo automático
+- Ao abrir 📴 Modo offline com internet, o aparelho se atualiza sozinho se o pacote tiver >12 h, for de outro usuário ou não existir. Ninguém precisa lembrar de preparar.

@@ -1,5 +1,7 @@
 """Modo offline: preparar o celular (com internet) e enviar o que foi
 preenchido sem sinal. O preenchimento offline em si fica em offline_pwa/offline.html."""
+from datetime import datetime, timezone
+
 import streamlit as st
 
 from src.auth import exigir_login
@@ -53,6 +55,26 @@ if res.preparo and ss.get("off_preparo_id") != res.preparo.get("id"):   # estado
 resumo = res.resumo or {}
 pendentes = (resumo.get("rondas") or 0) + (resumo.get("fotos") or 0)
 
+# Preparo AUTOMÁTICO: ao abrir esta página com internet, se o aparelho não tem pacote (ou ele tem
+# mais de 12 h / é de outra pessoa), baixa de novo sozinho. Ninguém precisa lembrar de preparar.
+def _pacote_velho(r: dict) -> bool:
+    g = r.get("pacote_gerado")
+    if not g or r.get("pacote_user") != usuario.id:
+        return True
+    try:
+        idade = datetime.now(timezone.utc) - datetime.fromisoformat(g).astimezone(timezone.utc)
+    except ValueError:
+        return True
+    return idade.total_seconds() > 12 * 3600
+
+
+if res.resumo is not None and not pendentes and not ss.get("off_auto_prep") and ss["off_pacote"] is None \
+        and _pacote_velho(resumo):
+    ss["off_auto_prep"] = True
+    with st.spinner("Atualizando os checklists neste aparelho…"):
+        ss["off_pacote"] = pacote_do_usuario(usuario, ss.get("off_internos", False))
+    st.rerun()
+
 # Enviar sozinho assim que a página abre e há algo guardado no aparelho.
 if pendentes and not ss["off_auto"] and not ss["off_enviar"]:
     ss["off_auto"] = True
@@ -89,9 +111,9 @@ st.subheader("📥 Preparar este aparelho (precisa de internet)")
 st.markdown(
     "1. Toque em **Preparar** — o celular guarda os checklists dos **próximos 14 dias** (todos os turnos).\n"
     "2. Abra a **tela offline** e use normalmente, **sem sinal**.\n"
-    "3. Quando voltar o sinal, abra esta página: o envio é automático."
+    "3. Quando voltar o sinal, abra esta página: o envio é automático — e o aparelho se atualiza sozinho (se o pacote tiver mais de 12 h)."
 )
-incluir_internos = st.checkbox("Incluir também os checklists de área interna", value=False)
+incluir_internos = st.checkbox("Incluir também os checklists de área interna", value=False, key="off_internos")
 if st.button("📥 Preparar este aparelho", type="primary", use_container_width=True):
     with st.spinner("Baixando checklists…"):
         ss["off_pacote"] = pacote_do_usuario(usuario, incluir_internos)
@@ -108,4 +130,4 @@ elif res.base:
     st.error("Os arquivos da tela offline não estão acessíveis neste servidor. Mande este texto ao suporte:")
     st.code("\n".join(res.base.get("testes") or []))
 st.caption("Dica: no celular, no menu do navegador, escolha **Adicionar à tela inicial** para abrir como um aplicativo. "
-           "Não precisa preparar a cada turno: o pacote cobre 14 dias. Prepare de novo só se mudarem checklists/perguntas ou perto do vencimento.")
+           "Não precisa preparar a cada turno: o pacote cobre 14 dias e se renova sozinho toda vez que esta página é aberta com internet.")

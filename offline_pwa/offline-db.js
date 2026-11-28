@@ -64,7 +64,9 @@ const temConteudo = (r) => Object.keys(r.respostas || {}).length || Object.value
 export async function resumo() {
   const rondas = (await todasRondas()).filter(r => r.sujo && temConteudo(r));
   const fotos = await todasFotos();
+  const pac = await lerPacote();
   return {
+    pacote_gerado: pac?.gerado || null, pacote_user: pac?.usuario?.id || null,
     rondas: rondas.length, fotos: fotos.length,
     erros: rondas.filter(r => r.erro).length + fotos.filter(f => f.erro).length,
     usuarios: [...new Set(rondas.map(r => r.user_id))],

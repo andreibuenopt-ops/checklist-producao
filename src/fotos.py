@@ -117,6 +117,21 @@ def enviar_foto_parada(parada_id: str, item_id: str, conteudo: bytes, usuario_id
     }).execute().data[0])
 
 
+def enviar_foto_ecoresinator(ecoresinator_id: str, conteudo: bytes, usuario_id: str) -> dict:
+    """Foto da rotina do Ecoresinator (painel/leituras), em vez de digitar tudo."""
+    caminho = f"ecoresinator/{ecoresinator_id}/{uuid.uuid4().hex[:12]}.jpg"
+    return _subir(caminho, conteudo, lambda: supabase.table("ecoresinator_fotos").insert({
+        "ecoresinator_id": ecoresinator_id, "caminho": caminho, "enviado_por": usuario_id,
+    }).execute().data[0])
+
+
+def listar_fotos_ecoresinator(ecoresinator_id: str) -> list[dict]:
+    return (
+        supabase.table("ecoresinator_fotos").select("id, caminho, enviado_em")
+        .eq("ecoresinator_id", ecoresinator_id).order("enviado_em").execute().data
+    )
+
+
 def listar_fotos_parada(parada_id: str) -> list[dict]:
     return (
         supabase.table("paradas_fotos").select("id, item_id, caminho, enviado_em")
@@ -191,7 +206,7 @@ def remover_fotos_antigas(dias: int) -> int:
     dias. Devolve quantas."""
     corte = (agora_local() - timedelta(days=dias)).isoformat()
     total = 0
-    for tabela in ("checklist_fotos", "paradas_fotos"):
+    for tabela in ("checklist_fotos", "paradas_fotos", "ecoresinator_fotos"):
         while True:
             lote = supabase.table(tabela).select("id, caminho").lt("enviado_em", corte).limit(200).execute().data
             if not lote:
